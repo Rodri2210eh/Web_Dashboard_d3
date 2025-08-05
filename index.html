@@ -71,43 +71,17 @@
 
             </div>
 
- 
-
             <div class="control-group">
-
-                <!-- Variable selection dropdown -->
-
-                <label for="variable-select">Variable to analyze: </label>
-
-                <select id="variable-select" disabled>
-
-                    <option value="">Please load a file first</option>
-
-                </select>
-
- 
-
-                <!-- Bin count selector -->
-
-                <label for="bin-count">Number of bins: </label>
-
-                <input id="bin-count" type="number" min="3" max="20" value="10" disabled>
-
+                <button id="add-chart">Add New Chart</button>
             </div>
 
         </section>
 
- 
+        
 
         <!-- Chart container -->
 
-        <section class="chart-container">
-
-            <div id="chart"></div>
-
-            <!-- Tooltip element (hidden by default) -->
-
-            <div id="tooltip" class="tooltip" style="opacity: 0;"></div>
+        <section class="charts-container" id="charts-container">
 
         </section>
 
