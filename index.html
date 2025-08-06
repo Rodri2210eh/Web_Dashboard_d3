@@ -1,94 +1,47 @@
 <!DOCTYPE html>
-
 <html lang="es">
-
- 
-
 <head>
-
     <meta charset="UTF-8">
-
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
     <title>Feature Importance Visualization</title>
-
     <!-- D3.js library for data visualization -->
-
     <script src="https://d3js.org/d3.v7.min.js"></script>
-
     <!-- Parquet.js library for Parquet file support -->
-
     <script src="https://cdn.jsdelivr.net/npm/parquetjs@0.11.2/dist/parquet.min.js"></script>
-
     <!-- Main JavaScript file -->
-
     <script src="js/main.js" defer></script>
-
     <!-- CSS styles -->
-
     <link rel="stylesheet" href="css/styles.css">
-
 </head>
-
- 
 <body>
-
     <!-- Header section -->
-
     <header>
-
         <div class="container">
-
             <h1>Feature Importance Visualization</h1>
-
         </div>
-
     </header>
 
- 
-
     <!-- Main content area -->
-
     <main class="container">
-
         <!-- Control panel for user inputs -->
-
         <section id="controls">
-
             <div class="control-group">
-
                 <!-- File upload button -->
-
                 <label for="file-upload" class="file-upload">
-
                     Select CSV File
-
                 </label>
-
-                <input id="file-upload" type="file" accept=".csv">
-
+                <input id="file-upload" type="file" accept=".csv,.parquet">
                 <span id="file-info">No file selected</span>
-
             </div>
-
             <div class="control-group">
                 <button id="add-chart">Add New Chart</button>
             </div>
-
         </section>
-
         
-
         <!-- Chart container -->
-
-        <section class="charts-container" id="charts-container">
-
+        <section class="charts-grid" id="charts-grid">
+            <!-- Charts will be added here in a grid layout -->
         </section>
-
     </main>
-
 </body>
-
- 
-
 </html>

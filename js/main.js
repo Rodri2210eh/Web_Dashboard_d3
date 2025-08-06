@@ -25,13 +25,54 @@ function setupEventListeners() {
     document.getElementById("add-chart").addEventListener("click", addNewChart);
 }
 
+window.addEventListener('resize', handleResize);
+
+/**
+ * Handles chart resizing while maintaining a strict 2-column grid layout
+ * - Updates internal chart dimensions when container size changes
+ * - CSS grid handles the external layout (2-column pattern)
+ * - Only adjusts the SVG and chart elements, not the container positioning
+ */
+function handleResize() {
+    // Loop through all active charts
+    charts.forEach(chart => {
+        // Skip if chart container doesn't exist in DOM
+        if (!document.getElementById(chart.containerId)) return;
+        
+        // Select the chart container and get its current dimensions
+        const container = d3.select(`#${chart.containerId}`);
+        const containerWidth = container.node().clientWidth;  // Current width
+        const containerHeight = container.node().clientHeight; // Current height
+
+        // Calculate chart dimensions accounting for margins
+        chart.width = containerWidth - margin.left - margin.right;
+        chart.height = containerHeight - margin.top - margin.bottom;
+
+        // Update SVG dimensions to fill container
+        container.select('svg')
+            .attr('width', containerWidth)       // Set absolute width
+            .attr('height', containerHeight)     // Set absolute height
+            .attr('viewBox', `0 0 ${containerWidth} ${containerHeight}`); // Responsive scaling
+
+        // Redraw chart contents with new dimensions
+        updateChart(chart.xScale, chart.containerId.replace('chart-', ''));
+    });
+}
+
 function initializeChart(containerId) {
     console.log("containerId inicial: ", containerId)
     const container = d3.select(`#${containerId}`);
     
+    const containerWidth = container.node().getBoundingClientRect().width;
+    const containerHeight = container.node().getBoundingClientRect().height;
+    
+    const chartWidth = containerWidth - margin.left - margin.right;
+    const chartHeight = containerHeight - margin.top - margin.bottom;
+
     const svg = container.append("svg")
-        .attr("width", width + margin.left + margin.right)
-        .attr("height", height + margin.top + margin.bottom)
+        .attr("width", '100%')
+        .attr("height", '100%')
+        .attr("viewBox", `0 0 ${containerWidth} ${containerHeight}`)
         .append("g")
         .attr("transform", `translate(${margin.left},${margin.top})`)
         .on("mousemove", function(event) {
@@ -62,8 +103,8 @@ function initializeChart(containerId) {
     const clip = svg.append("defs").append("clipPath")
         .attr("id", `clip-${containerId}`)
         .append("rect")
-        .attr("width", width)
-        .attr("height", height);
+        .attr("width", chartWidth)
+        .attr("height", chartHeight);
 
     const chartGroup = svg.append('g')
         .attr("clip-path", `url(#clip-${containerId})`);
@@ -106,11 +147,13 @@ function initializeChart(containerId) {
         yAxis,
         brushGroup,
         brush,
-        xScale: d3.scaleLinear().range([0, width]),
-        yScale: d3.scaleLinear().range([height, 0]),
+        xScale: d3.scaleLinear().range([0, chartWidth]),
+        yScale: d3.scaleLinear().range([chartHeight, 0]),
         currentBins: [],
         currentRegression: null,
-        isZoomed: false
+        isZoomed: false,
+        width: chartWidth,
+        height: chartHeight
     };
 }
 
@@ -139,7 +182,7 @@ async function handleFileUpload(event) {
         showFileMessage(`Loaded: ${file.name} (${processedData.totalRecords.toLocaleString()} records)`, 'success');
         
         // Clear existing charts
-        document.getElementById('charts-container').innerHTML = '';
+        document.getElementById('charts-grid').innerHTML = '';
         charts = [];
         
         // Add first chart
@@ -150,30 +193,46 @@ async function handleFileUpload(event) {
     }
 }
 
+/**
+ * Creates and initializes a new chart in the dashboard
+ * - Sets up DOM structure
+ * - Configures chart controls (variable selector, bin count, color picker)
+ * - Handles event listeners
+ * - Initializes D3 visualization
+ */
 function addNewChart() {
+    // Validate data availability
     if (!currentData.length) {
         alert("Please load data first");
         return;
     }
 
+    // Generate unique chart ID
     const chartId = `chart-${Date.now()}`;
-    console.log("addNewChart for chartWrapper", chartId)
+    console.log("Creating new chart:", chartId);
 
-    const chartsContainer = document.getElementById('charts-container');
+    // Get charts grid container
+    const chartsGrid = document.getElementById('charts-grid');
     
+    // Create chart wrapper div
     const chartWrapper = document.createElement('div');
     chartWrapper.className = 'chart-wrapper';
     chartWrapper.id = chartId;
     
+    // Create header section
     const chartHeader = document.createElement('div');
     chartHeader.className = 'chart-header';
     
+    // Chart title
     const chartTitle = document.createElement('h3');
-    chartTitle.textContent = `Chart ${charts.length + 1}`;
+    chartTitle.className = 'chart-title';
+    chartTitle.textContent = 'Analysis: Select a variable';
     
+    // Create controls container
     const chartControls = document.createElement('div');
     chartControls.className = 'chart-controls';
     
+    // Variable selection dropdown
     const variableSelect = document.createElement('select');
     variableSelect.className = 'chart-variable-select';
     
@@ -182,6 +241,7 @@ function addNewChart() {
     defaultOption.textContent = 'Select a variable';
     variableSelect.appendChild(defaultOption);
     
+    // Populate variables dropdown
     availableVariables.forEach(varName => {
         const option = document.createElement('option');
         option.value = varName;
@@ -189,6 +249,7 @@ function addNewChart() {
         variableSelect.appendChild(option);
     });
     
+    // Bin count input
     const binCount = document.createElement('input');
     binCount.type = 'number';
     binCount.min = '3';
@@ -196,53 +257,105 @@ function addNewChart() {
     binCount.value = '10';
     binCount.className = 'chart-bin-count';
     
+    // Color picker components
+    const colorPickerLabel = document.createElement('span');
+    colorPickerLabel.className = 'color-picker-label';
+    colorPickerLabel.textContent = 'Color:';
+    
+    const colorPicker = document.createElement('input');
+    colorPicker.type = 'color';
+    colorPicker.value = '#F68D2E'; // Default orange
+    colorPicker.className = 'color-picker-input';
+    
+    const colorPickerContainer = document.createElement('div');
+    colorPickerContainer.className = 'color-picker';
+    colorPickerContainer.appendChild(colorPickerLabel);
+    colorPickerContainer.appendChild(colorPicker);
+    
+    // Remove chart button
     const removeBtn = document.createElement('button');
     removeBtn.className = 'remove-chart';
     removeBtn.textContent = 'Remove';
     removeBtn.onclick = () => removeChart(chartId);
     
+    // Assemble controls
     chartControls.appendChild(variableSelect);
     chartControls.appendChild(binCount);
+    chartControls.appendChild(colorPickerContainer);
     chartControls.appendChild(removeBtn);
     
+    // Assemble header
     chartHeader.appendChild(chartTitle);
     chartHeader.appendChild(chartControls);
     
+    // Create chart container
     const chartDiv = document.createElement('div');
     chartDiv.className = 'chart';
     chartDiv.id = `chart-${chartId}`;
     
+    // Create tooltip
     const tooltip = document.createElement('div');
     tooltip.className = 'tooltip';
     tooltip.style.opacity = '0';
     tooltip.id = `tooltip-${chartId}`;
     
+    // Assemble chart wrapper
     chartWrapper.appendChild(chartHeader);
     chartWrapper.appendChild(chartDiv);
     chartWrapper.appendChild(tooltip);
     
-    chartsContainer.appendChild(chartWrapper);
+    // Add to DOM
+    chartsGrid.appendChild(chartWrapper);
     
+    // Initialize D3 chart
     const chart = initializeChart(chartDiv.id);
     charts.push(chart);
 
-    console.log("chartDiv.id", chartDiv.id)
-    variableSelect.addEventListener('change', () => updateChartFor(chartId));
+    // Event listeners
+    variableSelect.addEventListener('change', () => {
+        updateChartFor(chartId);
+        const selectedVar = variableSelect.value || 'Select a variable';
+        chartTitle.textContent = `Analysis: ${selectedVar}`;
+    });
     binCount.addEventListener('change', () => updateChartFor(chartId));
     
+    // Dual event listeners for color picker (instant + finalized changes)
+    colorPicker.addEventListener('input', function() {
+        const chart = charts.find(c => c.containerId === `chart-${chartId}`);
+        if (chart && chart.currentBins) {
+            // Force immediate color update without full redraw
+            chart.barsGroup.selectAll('.bar')
+                .attr('fill', this.value);
+        }
+    });
+    colorPicker.addEventListener('change', () => updateChartFor(chartId));
+    
+    // Initialize chart if default variable is selected
     if (variableSelect.value) {
         updateChartFor(chartId);
     }
+
+    setTimeout(() => {
+        handleResize();
+    }, 10);
 }
 
 function removeChart(chartId) {
-    console.log("removeChart", chartId)
+    console.log("Removing chart:", chartId);
+    
+    // 1. Find and remove the chart element
     const chartElement = document.getElementById(chartId);
     if (chartElement) {
         chartElement.remove();
     }
     
-    charts = charts.filter(chart => chart.containerId !== `${chartId}`);
+    // 2. Remove from charts array
+    charts = charts.filter(chart => chart.containerId !== `chart-${chartId}`);
+    
+    // 3. Force a resize after DOM update
+    setTimeout(() => {
+        handleResize();
+    }, 10); // Small delay to ensure DOM is updated
 }
 
 function updateChartFor(chartId) {
@@ -370,45 +483,65 @@ function updateChart(xScale, chartId) {
     drawTitle(selectedVariable, binsWithStats.length, chartId);
 }
 
+/**
+ * Draws or updates bar chart visualization for a specific chart
+ * @param {Array} binsWithStats - Array of bin objects containing statistical data
+ * @param {string} chartId - Unique identifier for the chart container
+ */
 function drawBars(binsWithStats, chartId) {
     console.log("drawBars", chartId)
+    
+    // Find the chart configuration from the global charts array
     const chart = charts.find(c => c.containerId === `chart-${chartId}`);
-    if (!chart) return;
+    if (!chart) return; // Exit if chart not found
 
+    // 1. Get current color from the color picker input
+    const chartElement = document.getElementById(chartId);
+    const colorPicker = chartElement.querySelector('.color-picker-input');
+    // Fallback to CSS variable if color picker not found
+    const barColor = colorPicker ? colorPicker.value : 'var(--tu-orange)';
+
+    // 2. Data join pattern: Handle entering, updating, and exiting bars
     const bars = chart.barsGroup.selectAll('.bar')
-        .data(binsWithStats, d => d.x0);
+        // Bind data using x0 as key for object constancy
+        .data(binsWithStats, d => d.x0)
+        // Immediately apply color to all bars (existing and new)
+        .attr('fill', barColor);
 
+    // Handle exiting bars (removed from dataset)
     bars.exit()
         .transition()
         .duration(250)
-        .attr('y', height)
-        .attr('height', 0)
-        .remove();
+        .attr('y', height) // Move to bottom
+        .attr('height', 0) // Collapse height
+        .remove(); // Remove from DOM
 
+    // Update existing bars with smooth transitions
     bars.transition()
         .duration(1000)
+        // Position and size bars based on data
         .attr('x', d => chart.xScale(d.x0))
         .attr('width', d => Math.max(1, chart.xScale(d.x1) - chart.xScale(d.x0) - 1))
         .attr('y', d => chart.yScale(d.fraudRatio))
-        .attr('height', d => height - chart.yScale(d.fraudRatio))
-        .attr('fill', 'var(--tu-orange)');
+        .attr('height', d => height - chart.yScale(d.fraudRatio));
 
+    // Handle new bars (added to dataset)
     bars.enter()
         .append('rect')
         .attr('class', 'bar')
+        // Initial properties for entering bars
         .attr('x', d => chart.xScale(d.x0))
         .attr('width', d => Math.max(1, chart.xScale(d.x1) - chart.xScale(d.x0) - 1))
-        .attr('y', height)
-        .attr('height', 0)
-        .attr('fill', 'var(--tu-orange)')
-        .attr('rx', 2)
+        .attr('y', height) // Start at bottom
+        .attr('height', 0) // Start collapsed
+        .attr('fill', barColor)
+        .attr('rx', 2) // Rounded corners
         .attr('ry', 2)
+        // Animate to final position/size
         .transition()
         .duration(750)
         .attr('y', d => chart.yScale(d.fraudRatio))
         .attr('height', d => height - chart.yScale(d.fraudRatio));
-
-    /*updateHitAreas(binsWithStats, chartId);*/
 }
 
 function drawTrendLine(domain, chartId) {
@@ -538,21 +671,14 @@ function drawTitle(selectedVariable, binCount, chartId) {
     const chart = charts.find(c => c.containerId === `chart-${chartId}`);
     if (!chart) return;
 
-    const title = chart.svg.selectAll('.title').data([null]);
+    const chartElement = document.getElementById(chartId);
+    if (!chartElement) return;
 
-    title.enter()
-        .append('text')
-        .attr('class', 'title')
-        .attr('x', width / 2)
-        .attr('y', -10)
-        .attr('text-anchor', 'middle')
-        .style('font-size', '16px')
-        .style('font-weight', 'bold')
-        .style('fill', 'var(--tu-blue)')
-        .merge(title)
-        .text(`Fraud Ratio (vs. Average) by ${selectedVariable} (${binCount} bins)`);
+    const titleElement = chartElement.querySelector('.chart-title');
+    if (titleElement) {
+        titleElement.textContent = `Analysis: ${selectedVariable || 'Select a variable'}`;
+    }
 
-    title.exit().remove();
 }
 
 function showTooltip(event, d, chartId) {
