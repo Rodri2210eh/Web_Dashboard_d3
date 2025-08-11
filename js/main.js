@@ -81,10 +81,8 @@ function initializeChart(containerId) {
                 const chart = charts.find(c => c.containerId === containerId);
                 if (!chart || !chart.currentBins) return;
                 
-                // Ajusta por margen izquierdo
                 const xValue = chart.xScale.invert(x - margin.left);
                 
-                // Busca el bin correcto con mayor precisión
                 const bin = chart.currentBins.find(b => {
                     const x0 = chart.xScale(b.x0);
                     const x1 = chart.xScale(b.x1);
@@ -185,7 +183,6 @@ async function handleFileUpload(event) {
         document.getElementById('charts-grid').innerHTML = '';
         charts = [];
         
-        // Add first chart
         addNewChart();
     } catch (error) {
         console.error("File processing error:", error);
