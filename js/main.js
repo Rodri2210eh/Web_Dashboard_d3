@@ -10,8 +10,7 @@ const COLUMN_MAPPING = {
 };
 
 // Global variables
-let currentData = [];
-let availableVariables = [];
+let datasets = []; // Array to store multiple datasets
 let charts = [];
 let idleTimeout;
 
@@ -36,25 +35,20 @@ window.addEventListener('resize', handleResize);
 function handleResize() {
     // Loop through all active charts
     charts.forEach(chart => {
-        // Skip if chart container doesn't exist in DOM
         if (!document.getElementById(chart.containerId)) return;
         
-        // Select the chart container and get its current dimensions
         const container = d3.select(`#${chart.containerId}`);
-        const containerWidth = container.node().clientWidth;  // Current width
-        const containerHeight = container.node().clientHeight; // Current height
+        const containerWidth = container.node().clientWidth;
+        const containerHeight = container.node().clientHeight;
 
-        // Calculate chart dimensions accounting for margins
         chart.width = containerWidth - margin.left - margin.right;
         chart.height = containerHeight - margin.top - margin.bottom;
 
-        // Update SVG dimensions to fill container
         container.select('svg')
-            .attr('width', containerWidth)       // Set absolute width
-            .attr('height', containerHeight)     // Set absolute height
-            .attr('viewBox', `0 0 ${containerWidth} ${containerHeight}`); // Responsive scaling
+            .attr('width', containerWidth)
+            .attr('height', containerHeight)
+            .attr('viewBox', `0 0 ${containerWidth} ${containerHeight}`);
 
-        // Redraw chart contents with new dimensions
         updateChart(chart.xScale, chart.containerId.replace('chart-', ''));
     });
 }
@@ -122,17 +116,13 @@ function initializeChart(containerId) {
     const brush = d3.brushX()
         .extent([[0, 0], [width, height]])
         .on("end", function(event) {
-            console.log("Brush Event:", event.selection);
             brushed(event, containerId.replace('chart-', ''));
         });
 
     brushGroup.call(brush);
-
-    console.log("Brush Group element:", brushGroup.node());
     
     svg.on("dblclick", () => resetZoom(containerId.replace('chart-', '')));
     
-
     return {
         containerId,
         svg,
@@ -151,43 +141,123 @@ function initializeChart(containerId) {
         currentRegression: null,
         isZoomed: false,
         width: chartWidth,
-        height: chartHeight
+        height: chartHeight,
+        datasetIndex: 0 // Track which dataset this chart uses
     };
 }
 
 async function handleFileUpload(event) {
-    const file = event.target.files[0];
-    if (!file) return;
+    const files = Array.from(event.target.files);
+    if (!files.length) return;
 
-    showFileMessage(`Processing: ${file.name}...`, 'info');
+    showFileMessage(`Processing ${files.length} files...`, 'info');
 
     try {
-        let processedData;
-
-        if (file.name.endsWith('.parquet')) {
-            processedData = await processParquetFile(file);
-        } else {
-            processedData = await processCSVFile(file);
+        // Clear existing data if it's the first upload
+        if (datasets.length === 0) {
+            document.getElementById('charts-grid').innerHTML = '';
+            charts = [];
         }
 
-        if (!processedData || !processedData.sampledData || !Array.isArray(processedData.sampledData) || processedData.sampledData.length === 0) {
-            throw new Error('File contains no valid data');
+        // Process each file
+        for (const file of files) {
+            try {
+                let processedData;
+                
+                if (file.name.endsWith('.parquet')) {
+                    processedData = await processParquetFile(file);
+                } else {
+                    processedData = await processCSVFile(file);
+                }
+
+                if (!processedData || !processedData.sampledData || !Array.isArray(processedData.sampledData) || processedData.sampledData.length === 0) {
+                    throw new Error('File contains no valid data');
+                }
+
+                // Add to datasets array
+                datasets.push({
+                    name: file.name,
+                    data: processedData.sampledData,
+                    variables: processedData.availableVariables,
+                    totalRecords: processedData.totalRecords
+                });
+
+                // Update file list UI
+                updateFileListUI();
+                
+            } catch (error) {
+                console.error(`Error processing file ${file.name}:`, error);
+                showFileMessage(`Error with ${file.name}: ${error.message}`, 'error');
+            }
         }
 
-        currentData = processedData.sampledData;
-        availableVariables = processedData.availableVariables;
-
-        showFileMessage(`Loaded: ${file.name} (${processedData.totalRecords.toLocaleString()} records)`, 'success');
+        showFileMessage(`Successfully loaded ${files.length} files`, 'success');
         
-        // Clear existing charts
-        document.getElementById('charts-grid').innerHTML = '';
-        charts = [];
-        
-        addNewChart();
+        // If this was the first upload, add a default chart
+        if (datasets.length === files.length && files.length > 0) {
+            addNewChart();
+        }
     } catch (error) {
         console.error("File processing error:", error);
         showFileError(error.message || 'File processing error');
     }
+}
+
+function updateFileListUI() {
+    const fileList = document.getElementById('file-list');
+    fileList.innerHTML = '';
+    
+    datasets.forEach((dataset, index) => {
+        const fileItem = document.createElement('div');
+        fileItem.className = 'file-item';
+        fileItem.innerHTML = `
+            <span class="file-name">${dataset.name}</span>
+            <span class="file-records">${dataset.totalRecords.toLocaleString()} records</span>
+            <button class="remove-file" data-index="${index}">×</button>
+        `;
+        fileList.appendChild(fileItem);
+    });
+
+    // Add event listeners to remove buttons
+    document.querySelectorAll('.remove-file').forEach(button => {
+        button.addEventListener('click', (e) => {
+            const index = parseInt(e.target.getAttribute('data-index'));
+            removeDataset(index);
+        });
+    });
+}
+
+function removeDataset(index) {
+    if (index < 0 || index >= datasets.length) return;
+    
+    // Check if any chart is using this dataset
+    const chartsUsingDataset = charts.filter(chart => 
+        chart.datasetIndex === index
+    );
+    
+    if (chartsUsingDataset.length > 0) {
+        if (!confirm(`This dataset is used by ${chartsUsingDataset.length} chart(s). Remove anyway?`)) {
+            return;
+        }
+        
+        // Remove charts using this dataset
+        chartsUsingDataset.forEach(chart => {
+            removeChart(chart.containerId);
+        });
+    }
+    
+    // Remove the dataset
+    datasets.splice(index, 1);
+    
+    // Update UI
+    updateFileListUI();
+    
+    // Update dataset indices in all charts
+    charts.forEach(chart => {
+        if (chart.datasetIndex > index) {
+            chart.datasetIndex--;
+        }
+    });
 }
 
 /**
@@ -199,35 +269,38 @@ async function handleFileUpload(event) {
  */
 function addNewChart() {
     // Validate data availability
-    if (!currentData.length) {
+    if (datasets.length === 0) {
         alert("Please load data first");
         return;
     }
 
-    // Generate unique chart ID
     const chartId = `chart-${Date.now()}`;
-    console.log("Creating new chart:", chartId);
-
-    // Get charts grid container
     const chartsGrid = document.getElementById('charts-grid');
     
-    // Create chart wrapper div
     const chartWrapper = document.createElement('div');
     chartWrapper.className = 'chart-wrapper';
     chartWrapper.id = chartId;
     
-    // Create header section
     const chartHeader = document.createElement('div');
     chartHeader.className = 'chart-header';
     
-    // Chart title
     const chartTitle = document.createElement('h3');
     chartTitle.className = 'chart-title';
     chartTitle.textContent = 'Analysis: Select a variable';
     
-    // Create controls container
     const chartControls = document.createElement('div');
     chartControls.className = 'chart-controls';
+    
+    // Add dataset selector
+    const datasetSelect = document.createElement('select');
+    datasetSelect.className = 'chart-dataset-select';
+    
+    datasets.forEach((dataset, index) => {
+        const option = document.createElement('option');
+        option.value = index;
+        option.textContent = dataset.name;
+        datasetSelect.appendChild(option);
+    });
     
     // Variable selection dropdown
     const variableSelect = document.createElement('select');
@@ -238,8 +311,9 @@ function addNewChart() {
     defaultOption.textContent = 'Select a variable';
     variableSelect.appendChild(defaultOption);
     
-    // Populate variables dropdown
-    availableVariables.forEach(varName => {
+    // Populate variables dropdown with selected dataset's variables
+    const selectedDatasetIndex = datasetSelect.value ? parseInt(datasetSelect.value) : 0;
+    datasets[selectedDatasetIndex].variables.forEach(varName => {
         const option = document.createElement('option');
         option.value = varName;
         option.textContent = varName;
@@ -254,14 +328,14 @@ function addNewChart() {
     binCount.value = '10';
     binCount.className = 'chart-bin-count';
     
-    // Color picker components
+    // Color picker
     const colorPickerLabel = document.createElement('span');
     colorPickerLabel.className = 'color-picker-label';
     colorPickerLabel.textContent = 'Color:';
     
     const colorPicker = document.createElement('input');
     colorPicker.type = 'color';
-    colorPicker.value = '#F68D2E'; // Default orange
+    colorPicker.value = '#F68D2E';
     colorPicker.className = 'color-picker-input';
     
     const colorPickerContainer = document.createElement('div');
@@ -276,6 +350,7 @@ function addNewChart() {
     removeBtn.onclick = () => removeChart(chartId);
     
     // Assemble controls
+    chartControls.appendChild(datasetSelect);
     chartControls.appendChild(variableSelect);
     chartControls.appendChild(binCount);
     chartControls.appendChild(colorPickerContainer);
@@ -306,32 +381,54 @@ function addNewChart() {
     
     // Initialize D3 chart
     const chart = initializeChart(chartDiv.id);
+    chart.datasetIndex = selectedDatasetIndex; // Set to currently selected dataset
     charts.push(chart);
 
     // Event listeners
+    datasetSelect.addEventListener('change', () => {
+        const datasetIndex = parseInt(datasetSelect.value);
+        chart.datasetIndex = datasetIndex;
+        
+        // Update variables dropdown
+        variableSelect.innerHTML = '';
+        const defaultOption = document.createElement('option');
+        defaultOption.value = '';
+        defaultOption.textContent = 'Select a variable';
+        variableSelect.appendChild(defaultOption);
+        
+        datasets[datasetIndex].variables.forEach(varName => {
+            const option = document.createElement('option');
+            option.value = varName;
+            option.textContent = varName;
+            variableSelect.appendChild(option);
+        });
+        
+        // Update chart title
+        updateChartTitle(chartId);
+        
+        // Update chart if a variable was already selected
+        if (variableSelect.value) {
+            updateChartFor(chartId);
+        }
+    });
+    
     variableSelect.addEventListener('change', () => {
         updateChartFor(chartId);
-        const selectedVar = variableSelect.value || 'Select a variable';
-        chartTitle.textContent = `Analysis: ${selectedVar}`;
+        updateChartTitle(chartId);
     });
+    
     binCount.addEventListener('change', () => updateChartFor(chartId));
     
-    // Dual event listeners for color picker (instant + finalized changes)
     colorPicker.addEventListener('input', function() {
         const chart = charts.find(c => c.containerId === `chart-${chartId}`);
         if (chart && chart.currentBins) {
-            // Force immediate color update without full redraw
             chart.barsGroup.selectAll('.bar')
                 .attr('fill', this.value);
         }
     });
+    
     colorPicker.addEventListener('change', () => updateChartFor(chartId));
     
-    // Initialize chart if default variable is selected
-    if (variableSelect.value) {
-        updateChartFor(chartId);
-    }
-
     setTimeout(() => {
         handleResize();
     }, 10);
@@ -352,7 +449,7 @@ function removeChart(chartId) {
     // 3. Force a resize after DOM update
     setTimeout(() => {
         handleResize();
-    }, 10); // Small delay to ensure DOM is updated
+    }, 10);
 }
 
 function updateChartFor(chartId) {
@@ -367,9 +464,9 @@ function updateChartFor(chartId) {
     const selectedVariable = variableSelect.value;
     const binCountValue = parseInt(binCount.value);
     
-    if (!selectedVariable || !currentData.length) return;
+    if (!selectedVariable || !datasets[chart.datasetIndex]?.data.length) return;
     
-    analyzeData(currentData, selectedVariable, binCountValue, chartId);
+    analyzeData(datasets[chart.datasetIndex].data, selectedVariable, binCountValue, chartId);
 }
 
 function analyzeData(data, selectedVariable, binCount, chartId) {
@@ -675,7 +772,27 @@ function drawTitle(selectedVariable, binCount, chartId) {
     if (titleElement) {
         titleElement.textContent = `Analysis: ${selectedVariable || 'Select a variable'}`;
     }
+    updateChartTitle(chartId);
 
+}
+
+function updateChartTitle(chartId) {
+    console.log("updateChartTitle", chartId)
+    const chartElement = document.getElementById(chartId);
+    if (!chartElement) return;
+
+    const chart = charts.find(c => c.containerId === `chart-${chartId}`);
+    if (!chart) return;
+
+    const datasetSelect = chartElement.querySelector('.chart-dataset-select');
+    const variableSelect = chartElement.querySelector('.chart-variable-select');
+    const titleElement = chartElement.querySelector('.chart-title');
+
+    if (datasetSelect && variableSelect && titleElement) {
+        const datasetName = datasetSelect.options[datasetSelect.selectedIndex]?.text || 'Dataset';
+        const variableName = variableSelect.value || 'Select a variable';
+        titleElement.textContent = `Analysis: ${variableName} (${datasetName})`;
+    }
 }
 
 function showTooltip(event, d, chartId) {

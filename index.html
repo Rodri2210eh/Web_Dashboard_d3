@@ -28,13 +28,19 @@
             <div class="control-group">
                 <!-- File upload button -->
                 <label for="file-upload" class="file-upload">
-                    Select CSV File
+                    Select CSV/Parquet Files
                 </label>
-                <input id="file-upload" type="file" accept=".csv,.parquet">
-                <span id="file-info">No file selected</span>
+                <input id="file-upload" type="file" accept=".csv,.parquet" multiple>
+                <span id="file-info">No files selected</span>
+            </div>
+            <div class="control-group">
+                <div id="file-list" class="file-list"></div>
             </div>
             <div class="control-group">
                 <button id="add-chart">Add New Chart</button>
+            </div>
+            <div class="control-group">
+                <button id="export-charts">Export Charts as Image</button>
             </div>
         </section>
         

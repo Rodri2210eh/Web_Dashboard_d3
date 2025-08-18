@@ -1,20 +1,5 @@
 /* CSS variables for consistent theming */
 
-/* Chart grid styles */
-.chart-grid {
-
-    background: var(--tu-white);
-
-    padding: 20px;
-
-    border-radius: 8px;
-
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
-
-    position: relative;
-
-}
-
 /* Animation styles */
 svg * {
     transition: opacity 0.5s ease, fill 0.3s ease, stroke 0.3s ease;
@@ -41,7 +26,7 @@ body {
 }
 
 .container {
-    max-width: 1200px;
+    max-width: 1285px;
     margin: 0 auto;
     padding: 20px;
 }
@@ -66,6 +51,7 @@ h1 {
     border-radius: 8px;
     margin-bottom: 30px;
     box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+    width: 100%;
 }
 
 .control-group {
@@ -361,4 +347,56 @@ label {
     #controls {
         padding: 15px;
     }
+}
+
+.file-list {
+    width: 100%;
+    margin-top: 10px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.file-item {
+    padding: 8px 12px;
+    border-bottom: 1px solid #eee;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.file-item:last-child {
+    border-bottom: none;
+}
+
+.file-name {
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.file-records {
+    font-size: 12px;
+    color: var(--tu-dark-gray);
+    margin-left: 10px;
+}
+
+.remove-file {
+    background: none;
+    border: none;
+    color: #ff4444;
+    cursor: pointer;
+    padding: 2px 5px;
+    font-size: 12px;
+}
+
+#export-charts {
+    background-color: var(--tu-orange);
+    margin-left: 10px;
+}
+
+#export-charts:hover {
+    background-color: #e67e22;
 }
