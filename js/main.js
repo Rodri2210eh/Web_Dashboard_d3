@@ -19,9 +19,169 @@ document.addEventListener('DOMContentLoaded', () => {
     setupEventListeners();
 });
 
+// Add to setupEventListeners()
 function setupEventListeners() {
     document.getElementById("file-upload").addEventListener("change", handleFileUpload);
     document.getElementById("add-chart").addEventListener("click", addNewChart);
+    document.getElementById("export-charts").addEventListener("click", showExportModal);
+}
+
+/**
+ * Displays the export modal with checkboxes for each visible chart
+ * Allows user to select which charts to include in the export
+ */
+function showExportModal() {
+  const modal = document.getElementById('export-modal');
+  const chartsList = modal.querySelector('.charts-list');
+  
+  // Clear previous list of charts
+  chartsList.innerHTML = '';
+  
+  // Get only charts that currently exist in the DOM
+  const visibleCharts = charts.filter(chart => 
+    document.getElementById(chart.containerId)
+  );
+  console.log("visibleCharts ", visibleCharts)
+  
+  // Show alert if no charts are available
+  if (visibleCharts.length === 0) {
+    alert("No charts available to export");
+    return;
+  }
+  
+  // Create checkbox for each visible chart
+  visibleCharts.forEach((chart, index) => {
+    console.log("chart.chartData", chart.chartData)
+    console.log("chart.chartData.selectedVariable", chart.chartData.selectedVariable)
+    const title = chart.chartData.selectedVariable
+    
+    const item = document.createElement('div');
+    item.className = 'chart-item';
+    item.innerHTML = `
+      <input type="checkbox" id="chart-${index}" checked>
+      <label for="chart-${index}" class="chart-title">${title}</label>
+    `;
+    chartsList.appendChild(item);
+  });
+  
+  // Show the modal dialog
+  modal.style.display = 'flex';
+  
+  // Set up button event handlers
+  document.getElementById('select-all').onclick = () => {
+    // Check all checkboxes when "Select All" is clicked
+    chartsList.querySelectorAll('input').forEach(checkbox => {
+      checkbox.checked = true;
+    });
+  };
+  
+  document.getElementById('export-selected').onclick = () => {
+    // Get indices of selected charts
+    const selectedIndices = [];
+    chartsList.querySelectorAll('input').forEach((checkbox, index) => {
+      if (checkbox.checked) {
+        selectedIndices.push(index);
+      }
+    });
+    
+    // Validate at least one chart is selected
+    if (selectedIndices.length === 0) {
+      alert("Please select at least one chart");
+      return;
+    }
+    
+    // Export selected charts and hide modal
+    exportSelectedCharts(selectedIndices.map(i => visibleCharts[i]));
+    modal.style.display = 'none';
+  };
+  
+  document.getElementById('cancel-export').onclick = () => {
+    // Simply hide the modal on cancel
+    modal.style.display = 'none';
+  };
+}
+
+/**
+ * Exports the selected charts as a single PNG image
+ * @param {Array} chartsToExport - Array of chart objects to be exported
+ */
+function exportSelectedCharts(chartsToExport) {
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d');
+  const scale = 2; // High resolution scaling
+  const padding = 20 * scale; // Outer padding
+  const chartPadding = 10 * scale; // Spacing between charts
+  
+  // Determine optimal grid layout based on number of charts
+  let chartsPerRow;
+  if (chartsToExport.length === 1) chartsPerRow = 1; // Single column for one chart
+  else if (chartsToExport.length <= 4) chartsPerRow = 2; // 2 columns for 2-4 charts
+  else chartsPerRow = 3; // 3 columns for 5+ charts
+  
+  // Get dimensions from first chart (assuming all charts are same size)
+  const firstSvg = document.querySelector(`#${chartsToExport[0].containerId} svg`);
+  const chartWidth = firstSvg.clientWidth * scale;
+  const chartHeight = firstSvg.clientHeight * scale;
+  
+  // Calculate total canvas dimensions
+  const cols = Math.min(chartsPerRow, chartsToExport.length);
+  const rows = Math.ceil(chartsToExport.length / chartsPerRow);
+  
+  canvas.width = cols * chartWidth + (cols - 1) * chartPadding + 2 * padding;
+  canvas.height = rows * chartHeight + (rows - 1) * chartPadding + 2 * padding;
+  
+  // Set white background
+  ctx.fillStyle = 'white';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  
+  // Add main title at top
+  ctx.fillStyle = 'black';
+  ctx.font = `bold ${16 * scale}px Arial`;
+  ctx.fillText('Charts Export', padding, padding - 1 * scale);
+  
+  // Process each chart in parallel
+  const promises = chartsToExport.map((chart, index) => {
+    return new Promise((resolve) => {
+      const svgElement = document.querySelector(`#${chart.containerId} svg`);
+      const title = chart.chartData.selectedVariable
+      
+      // Convert SVG to data URL
+      const svgData = new XMLSerializer().serializeToString(svgElement);
+      const img = new Image();
+      
+      img.onload = function() {
+        // Calculate grid position
+        const row = Math.floor(index / chartsPerRow);
+        const col = index % chartsPerRow;
+        
+        // Calculate exact position with padding
+        const x = padding + col * (chartWidth + chartPadding);
+        const y = padding + row * (chartHeight + chartPadding);
+        
+        // Draw chart image
+        ctx.drawImage(img, x, y, chartWidth, chartHeight);
+        
+        // Add chart title below each chart
+        ctx.fillStyle = 'black';
+        ctx.font = `bold ${12 * scale}px Arial`;
+        ctx.textAlign = 'center';
+        ctx.fillText(title, x + chartWidth/2, y + chartHeight + 1 * scale);
+        
+        resolve();
+      };
+      
+      // Start loading the SVG image
+      img.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgData)));
+    });
+  });
+  
+  // When all charts are rendered, trigger download
+  Promise.all(promises).then(() => {
+    const link = document.createElement('a');
+    link.download = `charts-export-${new Date().toISOString().slice(0, 10)}.png`;
+    link.href = canvas.toDataURL('image/png');
+    link.click();
+  });
 }
 
 window.addEventListener('resize', handleResize);
@@ -554,12 +714,21 @@ function updateChart(xScale, chartId) {
 
     chart.currentBins = binsWithStats;
 
-    chart.currentRegression = binsWithStats.length >= 2 ?
-        linearRegression(binsWithStats.map(bin => ({
+    // CALCULAR REGRESIÓN - MODIFICACIÓN IMPORTANTE
+    if (binsWithStats.length >= 2) {
+        chart.currentRegression = linearRegression(binsWithStats.map(bin => ({
             x: bin.xMid,
             y: bin.fraudRatio
-        }))) :
-        null;
+        })));
+    } else if (binsWithStats.length === 1) {
+        // Para un solo punto, crear una línea horizontal en el valor del punto
+        chart.currentRegression = {
+            slope: 0,
+            intercept: binsWithStats[0].fraudRatio
+        };
+    } else {
+        chart.currentRegression = null;
+    }
 
     const maxBarValue = d3.max(binsWithStats, d => d.fraudRatio);
     const maxTrendValue = chart.currentRegression ?
@@ -641,7 +810,10 @@ function drawBars(binsWithStats, chartId) {
 function drawTrendLine(domain, chartId) {
     console.log("drawTrendLine", chartId)
     const chart = charts.find(c => c.containerId === `chart-${chartId}`);
-    if (!chart || !chart.currentRegression) {
+    if (!chart) return;
+    
+    // Eliminar elementos existentes si no hay regresión
+    if (!chart.currentRegression) {
         chart.trendGroup.selectAll('.trend-line, .trend-value').remove();
         return;
     }
@@ -655,20 +827,17 @@ function drawTrendLine(domain, chartId) {
         { x: domain[1], y: chart.currentRegression.slope * domain[1] + chart.currentRegression.intercept }
     ];
 
+    // Actualizar o crear la línea de tendencia
     const trendLine = chart.trendGroup.selectAll('.trend-line')
         .data([trendData]);
-
-    trendLine.transition()
-        .duration(750)
-        .attr('d', lineGenerator);
 
     trendLine.enter()
         .append('path')
         .attr('class', 'trend-line')
-        .attr('d', lineGenerator)
-        .attr('opacity', 0)
+        .merge(trendLine)
         .transition()
         .duration(750)
+        .attr('d', lineGenerator)
         .attr('opacity', 1);
 
     trendLine.exit()
@@ -677,53 +846,32 @@ function drawTrendLine(domain, chartId) {
         .attr('opacity', 0)
         .remove();
 
-    const lastPoint = trendData[1];
+    // Calcular punto medio para mostrar el valor en el centro
+    const midX = (domain[0] + domain[1]) / 2;
+    const midY = chart.currentRegression.slope * midX + chart.currentRegression.intercept;
+    
+    const midPoint = { x: midX, y: midY };
+
+    // Siempre mostrar el valor de la tendencia en el centro si existe
     const trendLabel = chart.trendGroup.selectAll('.trend-value')
-        .data([lastPoint]);
+        .data([midPoint]);
 
     trendLabel.enter()
         .append('text')
         .attr('class', 'trend-value')
-        .attr('x', chart.xScale(lastPoint.x) - 5)
-        .attr('y', chart.yScale(lastPoint.y) - 5)
-        .attr('text-anchor', 'end')
-        .style('font-size', '10px')
+        .merge(trendLabel)
+        .transition()
+        .duration(750)
+        .attr('x', chart.xScale(midPoint.x))
+        .attr('y', chart.yScale(midPoint.y) - 10) // 10px arriba de la línea
+        .attr('text-anchor', 'middle') // Centrar texto horizontalmente
+        .style('font-size', '12px') // Un poco más grande
         .style('font-weight', 'bold')
         .style('fill', 'var(--tu-blue)')
-        .text(`${d3.format('.2f')(lastPoint.y)}x`);
+        .text(`${d3.format('.2f')(midPoint.y)}x`);
 
     trendLabel.exit().remove();
 }
-
-/*function updateHitAreas(binsWithStats, chartId) {
-    console.log("updateHitAreas", chartId);
-    const chart = charts.find(c => c.containerId === `chart-${chartId}`);
-    if (!chart) return;
-
-    // Usa chart.hitAreaGroup en lugar de chart.barsGroup
-    const hitAreas = chart.hitAreaGroup.selectAll('.bar-hit-area')
-        .data(binsWithStats, d => d.x0);
-
-    hitAreas.exit().remove();
-
-    hitAreas.enter()
-        .append('rect') // Cambiado de insert() a append()
-        .attr('class', 'bar-hit-area')
-        .attr('x', d => chart.xScale(d.x0))
-        .attr('width', d => Math.max(1, chart.xScale(d.x1) - chart.xScale(d.x0) - 1))
-        .attr('y', 0)
-        .attr('height', height)
-        .attr('opacity', 0)
-        .style('pointer-events', 'auto') // Asegura que reciba eventos
-        .on('mouseover', (event, d) => {
-            console.log("Mouseover detected on hit area"); // Debug
-            showTooltip(event, d, chartId);
-        })
-        .on('mouseout', () => {
-            console.log("Mouseout detected"); // Debug
-            hideTooltip(chartId);
-        });
-}*/
 
 function drawAxesAndGrid(chartId) {
     console.log("drawAxesAndGrid", chartId)
@@ -871,6 +1019,15 @@ function resetZoom(chartId) {
 }
 
 function linearRegression(data) {
+    if (!data || data.length < 1) return null;
+    
+    if (data.length === 1) {
+        return {
+            slope: 0,
+            intercept: data[0].y
+        };
+    }
+
     const n = data.length;
     let sumX = 0, sumY = 0, sumXY = 0, sumXX = 0;
 
@@ -881,7 +1038,16 @@ function linearRegression(data) {
         sumXX += point.x * point.x;
     });
 
-    const slope = (n * sumXY - sumX * sumY) / (n * sumXX - sumX * sumX);
+    const denominator = n * sumXX - sumX * sumX;
+    
+    if (denominator === 0) {
+        return {
+            slope: 0,
+            intercept: sumY / n
+        };
+    }
+
+    const slope = (n * sumXY - sumX * sumY) / denominator;
     const intercept = (sumY - slope * sumX) / n;
 
     return { slope, intercept };

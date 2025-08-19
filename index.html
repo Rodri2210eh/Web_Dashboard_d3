@@ -8,6 +8,8 @@
     <script src="https://d3js.org/d3.v7.min.js"></script>
     <!-- Parquet.js library for Parquet file support -->
     <script src="https://cdn.jsdelivr.net/npm/parquetjs@0.11.2/dist/parquet.min.js"></script>
+    <!-- canvg for SVG to Canvas conversion -->
+    <script src="https://cdn.jsdelivr.net/npm/canvg/dist/browser/canvg.min.js"></script>
     <!-- Main JavaScript file -->
     <script src="js/main.js" defer></script>
     <!-- CSS styles -->
@@ -38,8 +40,6 @@
             </div>
             <div class="control-group">
                 <button id="add-chart">Add New Chart</button>
-            </div>
-            <div class="control-group">
                 <button id="export-charts">Export Charts as Image</button>
             </div>
         </section>
@@ -49,5 +49,19 @@
             <!-- Charts will be added here in a grid layout -->
         </section>
     </main>
+
+    <!-- Export Modal -->
+    <div id="export-modal" class="modal">
+        <div class="modal-content">
+            <h3>Select Charts to Export</h3>
+            <div class="charts-list">
+            </div>
+            <div class="modal-actions">
+                <button id="select-all">Select All</button>
+                <button id="export-selected">Export Selected</button>
+                <button id="cancel-export">Cancel</button>
+            </div>
+        </div>
+    </div>
 </body>
 </html>
