@@ -1,0 +1,157 @@
+/* Base chart elements */
+.bar {
+    pointer-events: all;
+    transition: y 0.75s ease, height 0.75s ease, x 0.75s ease, width 0.75s ease, fill 0.3s ease;
+    opacity: 0.7;
+}
+
+.bar:hover {
+    opacity: 0.9;
+}
+
+.trend-line {
+    stroke: var(--tu-blue);
+    stroke-width: 2px;
+    stroke-dasharray: 5, 5;
+    fill: none;
+    transition: d 0.75s ease, opacity 0.5s ease;
+}
+
+.trend-value {
+    font-size: 12px;
+    fill: var(--tu-blue);
+    background-color: rgba(255, 255, 255, 0.95);
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-weight: bold;
+    stroke: white;
+    stroke-width: 2px;
+    paint-order: stroke;
+    pointer-events: none;
+}
+
+.axis-label {
+    font-size: 13px;
+    fill: var(--tu-dark-gray);
+}
+
+.axis line,
+.axis path {
+    stroke: var(--tu-dark-gray);
+    stroke-width: 1px;
+    transition: d 0.75s ease, opacity 0.5s ease, stroke-dasharray 0.5s ease;
+}
+
+.tooltip {
+    position: fixed;
+    padding: 12px;
+    background: rgba(0, 84, 164, 0.9);
+    color: white;
+    border-radius: 6px;
+    pointer-events: none;
+    font-size: 13px;
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.2);
+    line-height: 1.4;
+    top: 0;
+    left: 0;
+    opacity: 0;
+    z-index: 10;
+    transform: translate(-50%, -200%);
+    transition: opacity 0.3s ease, transform 0.2s ease;
+}
+
+.brush .overlay {
+    pointer-events: none;
+}
+
+.brush .handle {
+    pointer-events: all;
+}
+
+.hit-area-group {
+    pointer-events: all;
+    z-index: 2;
+}
+
+.brush-group {
+    z-index: 1;
+}
+
+.brush .selection {
+    pointer-events: none;
+    fill: var(--tu-light-blue);
+    fill-opacity: 0.2;
+    stroke: var(--tu-blue);
+    stroke-width: 1px;
+    stroke-dasharray: 3, 3;
+}
+
+.brush .overlay {
+    fill: none;
+    pointer-events: all;
+}
+
+.brush .handle {
+    fill: var(--tu-blue);
+    stroke: #fff;
+    stroke-width: 1.5px;
+}
+
+.grid line {
+    stroke: #eee;
+    stroke-opacity: 0.7;
+    shape-rendering: crispEdges;
+    stroke-dasharray: 2, 2;
+}
+
+.grid path {
+    stroke-width: 0;
+}
+
+/* Chart type specific styles */
+.line-chart {
+    fill: none;
+    stroke-width: 3;
+    opacity: 0.8;
+    transition: d 0.75s ease;
+}
+
+.area-chart {
+    opacity: 0.5;
+    stroke-width: 1;
+    transition: d 0.75s ease;
+}
+
+.scatter-point {
+    r: 5;
+    stroke: #fff;
+    stroke-width: 1;
+    opacity: 0.7;
+    transition: cx 0.75s ease, cy 0.75s ease;
+}
+
+.horizontal-bar {
+    rx: 2;
+    ry: 2;
+    transition: width 0.75s ease, y 0.75s ease;
+}
+
+.smooth-line {
+    fill: none;
+    stroke-width: 3;
+    opacity: 0.8;
+    transition: d 0.75s ease;
+}
+
+.step-chart {
+    fill: none;
+    stroke-width: 2;
+    opacity: 0.8;
+    transition: d 0.75s ease;
+}
+
+.dot-plot {
+    r: 4;
+    opacity: 0.7;
+    transition: cx 0.75s ease, cy 0.75s ease;
+}

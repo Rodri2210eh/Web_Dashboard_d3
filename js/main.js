@@ -1,1149 +1,229 @@
-// Chart configuration constants
-const width = 800;
-const height = 500;
-const margin = { top: 40, right: 40, bottom: 60, left: 60 };
+// js/main.js - Versión completa sin módulos ES6
 
-// Required column name mappings
-const COLUMN_MAPPING = {
-    fraudFlag: 'fraud_combined',
-    sessionId: 'sessionid'
+// Chart configuration constants
+const CONFIG = {
+    width: 800,
+    height: 500,
+    margin: { top: 40, right: 40, bottom: 60, left: 60 },
+    columnMapping: {
+        fraudFlag: 'fraud_combined',
+        sessionId: 'sessionid'
+    }
 };
 
-// Global variables
-let datasets = []; // Array to store multiple datasets
-let charts = [];
-let idleTimeout;
-
-// Initialize application when DOM is ready
-document.addEventListener('DOMContentLoaded', () => {
-    setupEventListeners();
-});
-
-// Add to setupEventListeners()
-function setupEventListeners() {
-    document.getElementById("file-upload").addEventListener("change", handleFileUpload);
-    document.getElementById("add-chart").addEventListener("click", addNewChart);
-    document.getElementById("export-charts").addEventListener("click", showExportModal);
-}
-
-/**
- * Displays the export modal with checkboxes for each visible chart
- * Allows user to select which charts to include in the export
- */
-function showExportModal() {
-  const modal = document.getElementById('export-modal');
-  const chartsList = modal.querySelector('.charts-list');
-  
-  // Clear previous list of charts
-  chartsList.innerHTML = '';
-  
-  // Get only charts that currently exist in the DOM
-  const visibleCharts = charts.filter(chart => 
-    document.getElementById(chart.containerId)
-  );
-  console.log("visibleCharts ", visibleCharts)
-  
-  // Show alert if no charts are available
-  if (visibleCharts.length === 0) {
-    alert("No charts available to export");
-    return;
-  }
-  
-  // Create checkbox for each visible chart
-  visibleCharts.forEach((chart, index) => {
-    console.log("chart.chartData", chart.chartData)
-    console.log("chart.chartData.selectedVariable", chart.chartData.selectedVariable)
-    const title = chart.chartData.selectedVariable
-    
-    const item = document.createElement('div');
-    item.className = 'chart-item';
-    item.innerHTML = `
-      <input type="checkbox" id="chart-${index}" checked>
-      <label for="chart-${index}" class="chart-title">${title}</label>
-    `;
-    chartsList.appendChild(item);
-  });
-  
-  // Show the modal dialog
-  modal.style.display = 'flex';
-  
-  // Set up button event handlers
-  document.getElementById('select-all').onclick = () => {
-    // Check all checkboxes when "Select All" is clicked
-    chartsList.querySelectorAll('input').forEach(checkbox => {
-      checkbox.checked = true;
-    });
-  };
-  
-  document.getElementById('export-selected').onclick = () => {
-    // Get indices of selected charts
-    const selectedIndices = [];
-    chartsList.querySelectorAll('input').forEach((checkbox, index) => {
-      if (checkbox.checked) {
-        selectedIndices.push(index);
-      }
-    });
-    
-    // Validate at least one chart is selected
-    if (selectedIndices.length === 0) {
-      alert("Please select at least one chart");
-      return;
+// Global App instance
+class App {
+    constructor() {
+        this.datasets = [];
+        this.chartManager = new ChartManager(CONFIG);
+        this.dataProcessor = new DataProcessor(CONFIG.columnMapping);
+        this.exportManager = new ExportManager();
+        this.mergeManager = new MergeManager();
+        
+        // Hacer que chartManager pueda acceder a los datasets
+        this.chartManager.app = this;
     }
-    
-    // Export selected charts and hide modal
-    exportSelectedCharts(selectedIndices.map(i => visibleCharts[i]));
-    modal.style.display = 'none';
-  };
-  
-  document.getElementById('cancel-export').onclick = () => {
-    // Simply hide the modal on cancel
-    modal.style.display = 'none';
-  };
-}
 
-/**
- * Exports the selected charts as a single PNG image
- * @param {Array} chartsToExport - Array of chart objects to be exported
- */
-function exportSelectedCharts(chartsToExport) {
-  const canvas = document.createElement('canvas');
-  const ctx = canvas.getContext('2d');
-  const scale = 2; // High resolution scaling
-  const padding = 20 * scale; // Outer padding
-  const chartPadding = 10 * scale; // Spacing between charts
-  
-  // Determine optimal grid layout based on number of charts
-  let chartsPerRow;
-  if (chartsToExport.length === 1) chartsPerRow = 1; // Single column for one chart
-  else if (chartsToExport.length <= 4) chartsPerRow = 2; // 2 columns for 2-4 charts
-  else chartsPerRow = 3; // 3 columns for 5+ charts
-  
-  // Get dimensions from first chart (assuming all charts are same size)
-  const firstSvg = document.querySelector(`#${chartsToExport[0].containerId} svg`);
-  const chartWidth = firstSvg.clientWidth * scale;
-  const chartHeight = firstSvg.clientHeight * scale;
-  
-  // Calculate total canvas dimensions
-  const cols = Math.min(chartsPerRow, chartsToExport.length);
-  const rows = Math.ceil(chartsToExport.length / chartsPerRow);
-  
-  canvas.width = cols * chartWidth + (cols - 1) * chartPadding + 2 * padding;
-  canvas.height = rows * chartHeight + (rows - 1) * chartPadding + 2 * padding;
-  
-  // Set white background
-  ctx.fillStyle = 'white';
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-  
-  // Add main title at top
-  ctx.fillStyle = 'black';
-  ctx.font = `bold ${16 * scale}px Arial`;
-  ctx.fillText('Charts Export', padding, padding - 1 * scale);
-  
-  // Process each chart in parallel
-  const promises = chartsToExport.map((chart, index) => {
-    return new Promise((resolve) => {
-      const svgElement = document.querySelector(`#${chart.containerId} svg`);
-      const title = chart.chartData.selectedVariable
-      
-      // Convert SVG to data URL
-      const svgData = new XMLSerializer().serializeToString(svgElement);
-      const img = new Image();
-      
-      img.onload = function() {
-        // Calculate grid position
-        const row = Math.floor(index / chartsPerRow);
-        const col = index % chartsPerRow;
+    init() {
+        this.setupEventListeners();
+        console.log('Application initialized with Go Live server');
+    }
+
+    setupEventListeners() {
+        const fileUpload = document.getElementById('file-upload');
+        const addChart = document.getElementById('add-chart');
+        const exportCharts = document.getElementById('export-charts');
+        const joinCharts = document.getElementById('join-charts');
+
+        if (fileUpload) {
+            fileUpload.addEventListener('change', (e) => this.handleFileUpload(e));
+        } else {
+            console.error('File upload element not found');
+        }
+
+        if (addChart) {
+            addChart.addEventListener('click', () => this.addNewChart());
+        }
+
+        if (exportCharts) {
+            exportCharts.addEventListener('click', () => this.showExportModal());
+        }
+
+        if (joinCharts) {
+            joinCharts.addEventListener('click', () => this.showJoinModal());
+        }
         
-        // Calculate exact position with padding
-        const x = padding + col * (chartWidth + chartPadding);
-        const y = padding + row * (chartHeight + chartPadding);
-        
-        // Draw chart image
-        ctx.drawImage(img, x, y, chartWidth, chartHeight);
-        
-        // Add chart title below each chart
-        ctx.fillStyle = 'black';
-        ctx.font = `bold ${12 * scale}px Arial`;
-        ctx.textAlign = 'center';
-        ctx.fillText(title, x + chartWidth/2, y + chartHeight + 1 * scale);
-        
-        resolve();
-      };
-      
-      // Start loading the SVG image
-      img.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgData)));
-    });
-  });
-  
-  // When all charts are rendered, trigger download
-  Promise.all(promises).then(() => {
-    const link = document.createElement('a');
-    link.download = `charts-export-${new Date().toISOString().slice(0, 10)}.png`;
-    link.href = canvas.toDataURL('image/png');
-    link.click();
-  });
-}
+        window.addEventListener('resize', () => this.handleResize());
+    }
 
-window.addEventListener('resize', handleResize);
+    async handleFileUpload(event) {
+        const files = Array.from(event.target.files);
+        if (!files.length) return;
 
-/**
- * Handles chart resizing while maintaining a strict 2-column grid layout
- * - Updates internal chart dimensions when container size changes
- * - CSS grid handles the external layout (2-column pattern)
- * - Only adjusts the SVG and chart elements, not the container positioning
- */
-function handleResize() {
-    // Loop through all active charts
-    charts.forEach(chart => {
-        if (!document.getElementById(chart.containerId)) return;
-        
-        const container = d3.select(`#${chart.containerId}`);
-        const containerWidth = container.node().clientWidth;
-        const containerHeight = container.node().clientHeight;
+        this.showFileMessage(`Processing ${files.length} files...`, 'info');
 
-        chart.width = containerWidth - margin.left - margin.right;
-        chart.height = containerHeight - margin.top - margin.bottom;
+        try {
+            // Clear existing data if it's the first upload
+            if (this.datasets.length === 0) {
+                const chartsGrid = document.getElementById('charts-grid');
+                if (chartsGrid) {
+                    chartsGrid.innerHTML = '';
+                }
+                this.chartManager.charts = [];
+            }
 
-        container.select('svg')
-            .attr('width', containerWidth)
-            .attr('height', containerHeight)
-            .attr('viewBox', `0 0 ${containerWidth} ${containerHeight}`);
+            for (const file of files) {
+                try {
+                    console.log('Processing file:', file.name);
+                    const processedData = await this.dataProcessor.processFile(file);
+                    
+                    if (!processedData?.sampledData?.length) {
+                        throw new Error('File contains no valid data');
+                    }
 
-        updateChart(chart.xScale, chart.containerId.replace('chart-', ''));
-    });
-}
+                    this.datasets.push({
+                        name: file.name,
+                        data: processedData.sampledData,
+                        variables: processedData.availableVariables,
+                        totalRecords: processedData.totalRecords
+                    });
 
-function initializeChart(containerId) {
-    console.log("containerId inicial: ", containerId)
-    const container = d3.select(`#${containerId}`);
-    
-    const containerWidth = container.node().getBoundingClientRect().width;
-    const containerHeight = container.node().getBoundingClientRect().height;
-    
-    const chartWidth = containerWidth - margin.left - margin.right;
-    const chartHeight = containerHeight - margin.top - margin.bottom;
-
-    const svg = container.append("svg")
-        .attr("width", '100%')
-        .attr("height", '100%')
-        .attr("viewBox", `0 0 ${containerWidth} ${containerHeight}`)
-        .append("g")
-        .attr("transform", `translate(${margin.left},${margin.top})`)
-        .on("mousemove", function(event) {
-            if (!event.buttons) {
-                const [x, y] = d3.pointer(event, this);
-                const chart = charts.find(c => c.containerId === containerId);
-                if (!chart || !chart.currentBins) return;
-                
-                const xValue = chart.xScale.invert(x - margin.left);
-                
-                const bin = chart.currentBins.find(b => {
-                    const x0 = chart.xScale(b.x0);
-                    const x1 = chart.xScale(b.x1);
-                    return x >= x0 && x <= x1;
-                });
-                
-                if (bin) {
-                    showTooltip(event, bin, containerId.replace('chart-', ''));
-                } else {
-                    hideTooltip(containerId.replace('chart-', ''));
+                    console.log('File processed successfully. Variables:', processedData.availableVariables);
+                    this.updateFileListUI();
+                    
+                } catch (error) {
+                    console.error(`Error processing file ${file.name}:`, error);
+                    this.showFileMessage(`Error with ${file.name}: ${error.message}`, 'error');
                 }
             }
-        })
-        .on("mouseout", () => hideTooltip(containerId.replace('chart-', '')));
 
-    const clip = svg.append("defs").append("clipPath")
-        .attr("id", `clip-${containerId}`)
-        .append("rect")
-        .attr("width", chartWidth)
-        .attr("height", chartHeight);
-
-    const chartGroup = svg.append('g')
-        .attr("clip-path", `url(#clip-${containerId})`);
-
-    const barsGroup = chartGroup.append('g').attr('class', 'bars-group');
-    const trendGroup = chartGroup.append('g').attr('class', 'trend-group');
-    const hitAreaGroup = svg.append('g').attr('class', 'hit-area-group');
-    const axesGroup = svg.append('g').attr('class', 'axes-group');
-    
-    const xAxis = axesGroup.append("g")
-        .attr("class", "x-axis axis")
-        .attr("transform", `translate(0,${height})`);
-        
-    const yAxis = axesGroup.append("g").attr("class", "y-axis axis");
-    
-    const brushGroup = svg.append('g').attr('class', 'brush-group');
-    const brush = d3.brushX()
-        .extent([[0, 0], [width, height]])
-        .on("end", function(event) {
-            brushed(event, containerId.replace('chart-', ''));
-        });
-
-    brushGroup.call(brush);
-    
-    svg.on("dblclick", () => resetZoom(containerId.replace('chart-', '')));
-    
-    return {
-        containerId,
-        svg,
-        chartGroup,
-        barsGroup,
-        trendGroup,
-        hitAreaGroup,
-        axesGroup,
-        xAxis,
-        yAxis,
-        brushGroup,
-        brush,
-        xScale: d3.scaleLinear().range([0, chartWidth]),
-        yScale: d3.scaleLinear().range([chartHeight, 0]),
-        currentBins: [],
-        currentRegression: null,
-        isZoomed: false,
-        width: chartWidth,
-        height: chartHeight,
-        datasetIndex: 0 // Track which dataset this chart uses
-    };
-}
-
-async function handleFileUpload(event) {
-    const files = Array.from(event.target.files);
-    if (!files.length) return;
-
-    showFileMessage(`Processing ${files.length} files...`, 'info');
-
-    try {
-        // Clear existing data if it's the first upload
-        if (datasets.length === 0) {
-            document.getElementById('charts-grid').innerHTML = '';
-            charts = [];
-        }
-
-        // Process each file
-        for (const file of files) {
-            try {
-                let processedData;
-                
-                if (file.name.endsWith('.parquet')) {
-                    processedData = await processParquetFile(file);
-                } else {
-                    processedData = await processCSVFile(file);
-                }
-
-                if (!processedData || !processedData.sampledData || !Array.isArray(processedData.sampledData) || processedData.sampledData.length === 0) {
-                    throw new Error('File contains no valid data');
-                }
-
-                // Add to datasets array
-                datasets.push({
-                    name: file.name,
-                    data: processedData.sampledData,
-                    variables: processedData.availableVariables,
-                    totalRecords: processedData.totalRecords
-                });
-
-                // Update file list UI
-                updateFileListUI();
-                
-            } catch (error) {
-                console.error(`Error processing file ${file.name}:`, error);
-                showFileMessage(`Error with ${file.name}: ${error.message}`, 'error');
+            this.showFileMessage(`Successfully loaded ${files.length} files`, 'success');
+            
+            // If this was the first upload, add a default chart
+            if (this.datasets.length === files.length && files.length > 0) {
+                this.addNewChart();
             }
+        } catch (error) {
+            console.error('File processing error:', error);
+            this.showFileError(error.message || 'File processing error');
         }
-
-        showFileMessage(`Successfully loaded ${files.length} files`, 'success');
-        
-        // If this was the first upload, add a default chart
-        if (datasets.length === files.length && files.length > 0) {
-            addNewChart();
-        }
-    } catch (error) {
-        console.error("File processing error:", error);
-        showFileError(error.message || 'File processing error');
     }
-}
 
-function updateFileListUI() {
-    const fileList = document.getElementById('file-list');
-    fileList.innerHTML = '';
-    
-    datasets.forEach((dataset, index) => {
-        const fileItem = document.createElement('div');
-        fileItem.className = 'file-item';
-        fileItem.innerHTML = `
-            <span class="file-name">${dataset.name}</span>
-            <span class="file-records">${dataset.totalRecords.toLocaleString()} records</span>
-            <button class="remove-file" data-index="${index}">×</button>
-        `;
-        fileList.appendChild(fileItem);
-    });
-
-    // Add event listeners to remove buttons
-    document.querySelectorAll('.remove-file').forEach(button => {
-        button.addEventListener('click', (e) => {
-            const index = parseInt(e.target.getAttribute('data-index'));
-            removeDataset(index);
-        });
-    });
-}
-
-function removeDataset(index) {
-    if (index < 0 || index >= datasets.length) return;
-    
-    // Check if any chart is using this dataset
-    const chartsUsingDataset = charts.filter(chart => 
-        chart.datasetIndex === index
-    );
-    
-    if (chartsUsingDataset.length > 0) {
-        if (!confirm(`This dataset is used by ${chartsUsingDataset.length} chart(s). Remove anyway?`)) {
+    addNewChart() {
+        if (this.datasets.length === 0) {
+            alert('Please load data first');
             return;
         }
+
+        this.chartManager.createChart(this.datasets);
+    }
+
+    showExportModal() {
+        this.exportManager.showModal(this.chartManager.charts);
+    }
+
+    showJoinModal() {
+        this.mergeManager.showModal(this.chartManager.charts, this.datasets);
+    }
+
+    handleResize() {
+        if (this.chartManager && typeof this.chartManager.handleResize === 'function') {
+            this.chartManager.handleResize();
+        }
+    }
+
+    updateFileListUI() {
+        const fileList = document.getElementById('file-list');
+        if (!fileList) return;
         
-        // Remove charts using this dataset
-        chartsUsingDataset.forEach(chart => {
-            removeChart(chart.containerId);
+        fileList.innerHTML = '';
+        
+        this.datasets.forEach((dataset, index) => {
+            const fileItem = document.createElement('div');
+            fileItem.className = 'file-item';
+            fileItem.innerHTML = `
+                <span class="file-name">${dataset.name}</span>
+                <span class="file-records">${dataset.totalRecords.toLocaleString()} records</span>
+                <button class="remove-file" data-index="${index}">×</button>
+            `;
+            fileList.appendChild(fileItem);
+        });
+
+        // Add event listeners to remove buttons
+        document.querySelectorAll('.remove-file').forEach(button => {
+            button.addEventListener('click', (e) => {
+                const index = parseInt(e.target.getAttribute('data-index'));
+                this.removeDataset(index);
+            });
         });
     }
-    
-    // Remove the dataset
-    datasets.splice(index, 1);
-    
-    // Update UI
-    updateFileListUI();
-    
-    // Update dataset indices in all charts
-    charts.forEach(chart => {
-        if (chart.datasetIndex > index) {
-            chart.datasetIndex--;
-        }
-    });
-}
 
-/**
- * Creates and initializes a new chart in the dashboard
- * - Sets up DOM structure
- * - Configures chart controls (variable selector, bin count, color picker)
- * - Handles event listeners
- * - Initializes D3 visualization
- */
-function addNewChart() {
-    // Validate data availability
-    if (datasets.length === 0) {
-        alert("Please load data first");
-        return;
-    }
-
-    const chartId = `chart-${Date.now()}`;
-    const chartsGrid = document.getElementById('charts-grid');
-    
-    const chartWrapper = document.createElement('div');
-    chartWrapper.className = 'chart-wrapper';
-    chartWrapper.id = chartId;
-    
-    const chartHeader = document.createElement('div');
-    chartHeader.className = 'chart-header';
-    
-    const chartTitle = document.createElement('h3');
-    chartTitle.className = 'chart-title';
-    chartTitle.textContent = 'Analysis: Select a variable';
-    
-    const chartControls = document.createElement('div');
-    chartControls.className = 'chart-controls';
-    
-    // Add dataset selector
-    const datasetSelect = document.createElement('select');
-    datasetSelect.className = 'chart-dataset-select';
-    
-    datasets.forEach((dataset, index) => {
-        const option = document.createElement('option');
-        option.value = index;
-        option.textContent = dataset.name;
-        datasetSelect.appendChild(option);
-    });
-    
-    // Variable selection dropdown
-    const variableSelect = document.createElement('select');
-    variableSelect.className = 'chart-variable-select';
-    
-    const defaultOption = document.createElement('option');
-    defaultOption.value = '';
-    defaultOption.textContent = 'Select a variable';
-    variableSelect.appendChild(defaultOption);
-    
-    // Populate variables dropdown with selected dataset's variables
-    const selectedDatasetIndex = datasetSelect.value ? parseInt(datasetSelect.value) : 0;
-    datasets[selectedDatasetIndex].variables.forEach(varName => {
-        const option = document.createElement('option');
-        option.value = varName;
-        option.textContent = varName;
-        variableSelect.appendChild(option);
-    });
-    
-    // Bin count input
-    const binCount = document.createElement('input');
-    binCount.type = 'number';
-    binCount.min = '3';
-    binCount.max = '20';
-    binCount.value = '10';
-    binCount.className = 'chart-bin-count';
-    
-    // Color picker
-    const colorPickerLabel = document.createElement('span');
-    colorPickerLabel.className = 'color-picker-label';
-    colorPickerLabel.textContent = 'Color:';
-    
-    const colorPicker = document.createElement('input');
-    colorPicker.type = 'color';
-    colorPicker.value = '#F68D2E';
-    colorPicker.className = 'color-picker-input';
-    
-    const colorPickerContainer = document.createElement('div');
-    colorPickerContainer.className = 'color-picker';
-    colorPickerContainer.appendChild(colorPickerLabel);
-    colorPickerContainer.appendChild(colorPicker);
-    
-    // Remove chart button
-    const removeBtn = document.createElement('button');
-    removeBtn.className = 'remove-chart';
-    removeBtn.textContent = 'Remove';
-    removeBtn.onclick = () => removeChart(chartId);
-    
-    // Assemble controls
-    chartControls.appendChild(datasetSelect);
-    chartControls.appendChild(variableSelect);
-    chartControls.appendChild(binCount);
-    chartControls.appendChild(colorPickerContainer);
-    chartControls.appendChild(removeBtn);
-    
-    // Assemble header
-    chartHeader.appendChild(chartTitle);
-    chartHeader.appendChild(chartControls);
-    
-    // Create chart container
-    const chartDiv = document.createElement('div');
-    chartDiv.className = 'chart';
-    chartDiv.id = `chart-${chartId}`;
-    
-    // Create tooltip
-    const tooltip = document.createElement('div');
-    tooltip.className = 'tooltip';
-    tooltip.style.opacity = '0';
-    tooltip.id = `tooltip-${chartId}`;
-    
-    // Assemble chart wrapper
-    chartWrapper.appendChild(chartHeader);
-    chartWrapper.appendChild(chartDiv);
-    chartWrapper.appendChild(tooltip);
-    
-    // Add to DOM
-    chartsGrid.appendChild(chartWrapper);
-    
-    // Initialize D3 chart
-    const chart = initializeChart(chartDiv.id);
-    chart.datasetIndex = selectedDatasetIndex; // Set to currently selected dataset
-    charts.push(chart);
-
-    // Event listeners
-    datasetSelect.addEventListener('change', () => {
-        const datasetIndex = parseInt(datasetSelect.value);
-        chart.datasetIndex = datasetIndex;
+    removeDataset(index) {
+        if (index < 0 || index >= this.datasets.length) return;
         
-        // Update variables dropdown
-        variableSelect.innerHTML = '';
-        const defaultOption = document.createElement('option');
-        defaultOption.value = '';
-        defaultOption.textContent = 'Select a variable';
-        variableSelect.appendChild(defaultOption);
-        
-        datasets[datasetIndex].variables.forEach(varName => {
-            const option = document.createElement('option');
-            option.value = varName;
-            option.textContent = varName;
-            variableSelect.appendChild(option);
-        });
-        
-        // Update chart title
-        updateChartTitle(chartId);
-        
-        // Update chart if a variable was already selected
-        if (variableSelect.value) {
-            updateChartFor(chartId);
-        }
-    });
-    
-    variableSelect.addEventListener('change', () => {
-        updateChartFor(chartId);
-        updateChartTitle(chartId);
-    });
-    
-    binCount.addEventListener('change', () => updateChartFor(chartId));
-    
-    colorPicker.addEventListener('input', function() {
-        const chart = charts.find(c => c.containerId === `chart-${chartId}`);
-        if (chart && chart.currentBins) {
-            chart.barsGroup.selectAll('.bar')
-                .attr('fill', this.value);
-        }
-    });
-    
-    colorPicker.addEventListener('change', () => updateChartFor(chartId));
-    
-    setTimeout(() => {
-        handleResize();
-    }, 10);
-}
-
-function removeChart(chartId) {
-    console.log("Removing chart:", chartId);
-    
-    // 1. Find and remove the chart element
-    const chartElement = document.getElementById(chartId);
-    if (chartElement) {
-        chartElement.remove();
-    }
-    
-    // 2. Remove from charts array
-    charts = charts.filter(chart => chart.containerId !== `chart-${chartId}`);
-    
-    // 3. Force a resize after DOM update
-    setTimeout(() => {
-        handleResize();
-    }, 10);
-}
-
-function updateChartFor(chartId) {
-    console.log("updateChartFor", chartId)
-    const chart = charts.find(c => c.containerId === `chart-${chartId}`);
-    if (!chart) return;
-    
-    const chartElement = document.getElementById(chartId);
-    const variableSelect = chartElement.querySelector('.chart-variable-select');
-    const binCount = chartElement.querySelector('.chart-bin-count');
-    
-    const selectedVariable = variableSelect.value;
-    const binCountValue = parseInt(binCount.value);
-    
-    if (!selectedVariable || !datasets[chart.datasetIndex]?.data.length) return;
-    
-    analyzeData(datasets[chart.datasetIndex].data, selectedVariable, binCountValue, chartId);
-}
-
-function analyzeData(data, selectedVariable, binCount, chartId) {
-    console.log("analyzeData", chartId)
-    const chart = charts.find(c => c.containerId === `chart-${chartId}`);
-    if (!chart) return;
-
-    let values = new Float64Array(data.length);
-    let flags = new Uint8Array(data.length);
-
-    let validCount = 0;
-    for (let i = 0; i < data.length; i++) {
-        const val = parseFloat(data[i][selectedVariable]);
-        const flag = parseInt(data[i][COLUMN_MAPPING.fraudFlag]);
-
-        if (!isNaN(val) && !isNaN(flag)) {
-            values[validCount] = val;
-            flags[validCount] = flag;
-            validCount++;
-        }
-    }
-
-    if (validCount < values.length) {
-        values = values.subarray(0, validCount);
-        flags = flags.subarray(0, validCount);
-    }
-
-    chart.chartData = {
-        values,
-        flags,
-        selectedVariable,
-        binCount,
-        initialDomain: [d3.min(values), d3.max(values)]
-    };
-
-    chart.xScale.domain(chart.chartData.initialDomain).nice();
-    chart.xAxis.call(d3.axisBottom(chart.xScale));
-    chart.yAxis.call(d3.axisLeft(chart.yScale));
-
-    updateChart(chart.xScale, chartId);
-}
-
-function updateChart(xScale, chartId) {
-    console.log("updateChart", chartId)
-    const chart = charts.find(c => c.containerId === `chart-${chartId}`);
-    if (!chart || !chart.chartData) return;
-
-    const { values, flags, selectedVariable, binCount } = chart.chartData;
-    const domain = xScale.domain();
-
-    chart.xAxis.transition()
-        .duration(750)
-        .call(d3.axisBottom(xScale));
-
-    const histogram = d3.histogram()
-        .value(d => d)
-        .domain(domain)
-        .thresholds(binCount);
-
-    const bins = histogram(values);
-
-    const binsWithStats = bins.map(bin => {
-        const startIdx = bin.x0 === domain[0] ? 0 : d3.bisectLeft(values, bin.x0);
-        const endIdx = bin.x1 === domain[1] ? values.length : d3.bisectLeft(values, bin.x1);
-
-        let fraudCount = 0;
-        for (let i = startIdx; i < endIdx; i++) {
-            fraudCount += flags[i];
-        }
-
-        const total = endIdx - startIdx;
-        const fraudRate = total > 0 ? fraudCount / total : 0;
-        const totalFraudRate = d3.mean(flags);
-        const fraudRatio = total > 0 ? fraudRate / totalFraudRate : 0;
-
-        return {
-            xMid: (bin.x0 + bin.x1) / 2,
-            x0: bin.x0,
-            x1: bin.x1,
-            fraudRate,
-            fraudRatio,
-            count: total
-        };
-    });
-
-    chart.currentBins = binsWithStats;
-
-    // CALCULAR REGRESIÓN - MODIFICACIÓN IMPORTANTE
-    if (binsWithStats.length >= 2) {
-        chart.currentRegression = linearRegression(binsWithStats.map(bin => ({
-            x: bin.xMid,
-            y: bin.fraudRatio
-        })));
-    } else if (binsWithStats.length === 1) {
-        // Para un solo punto, crear una línea horizontal en el valor del punto
-        chart.currentRegression = {
-            slope: 0,
-            intercept: binsWithStats[0].fraudRatio
-        };
-    } else {
-        chart.currentRegression = null;
-    }
-
-    const maxBarValue = d3.max(binsWithStats, d => d.fraudRatio);
-    const maxTrendValue = chart.currentRegression ?
-        Math.max(
-            chart.currentRegression.slope * domain[0] + chart.currentRegression.intercept,
-            chart.currentRegression.slope * domain[1] + chart.currentRegression.intercept
-        ) : 0;
-
-    const maxYValue = Math.max(maxBarValue, maxTrendValue) * 1.1;
-    chart.yScale.domain([0, maxYValue]);
-
-    drawBars(binsWithStats, chartId);
-    drawTrendLine(domain, chartId);
-    drawAxesAndGrid(chartId);
-    drawTitle(selectedVariable, binsWithStats.length, chartId);
-}
-
-/**
- * Draws or updates bar chart visualization for a specific chart
- * @param {Array} binsWithStats - Array of bin objects containing statistical data
- * @param {string} chartId - Unique identifier for the chart container
- */
-function drawBars(binsWithStats, chartId) {
-    console.log("drawBars", chartId)
-    
-    // Find the chart configuration from the global charts array
-    const chart = charts.find(c => c.containerId === `chart-${chartId}`);
-    if (!chart) return; // Exit if chart not found
-
-    // 1. Get current color from the color picker input
-    const chartElement = document.getElementById(chartId);
-    const colorPicker = chartElement.querySelector('.color-picker-input');
-    // Fallback to CSS variable if color picker not found
-    const barColor = colorPicker ? colorPicker.value : 'var(--tu-orange)';
-
-    // 2. Data join pattern: Handle entering, updating, and exiting bars
-    const bars = chart.barsGroup.selectAll('.bar')
-        // Bind data using x0 as key for object constancy
-        .data(binsWithStats, d => d.x0)
-        // Immediately apply color to all bars (existing and new)
-        .attr('fill', barColor);
-
-    // Handle exiting bars (removed from dataset)
-    bars.exit()
-        .transition()
-        .duration(250)
-        .attr('y', height) // Move to bottom
-        .attr('height', 0) // Collapse height
-        .remove(); // Remove from DOM
-
-    // Update existing bars with smooth transitions
-    bars.transition()
-        .duration(1000)
-        // Position and size bars based on data
-        .attr('x', d => chart.xScale(d.x0))
-        .attr('width', d => Math.max(1, chart.xScale(d.x1) - chart.xScale(d.x0) - 1))
-        .attr('y', d => chart.yScale(d.fraudRatio))
-        .attr('height', d => height - chart.yScale(d.fraudRatio));
-
-    // Handle new bars (added to dataset)
-    bars.enter()
-        .append('rect')
-        .attr('class', 'bar')
-        // Initial properties for entering bars
-        .attr('x', d => chart.xScale(d.x0))
-        .attr('width', d => Math.max(1, chart.xScale(d.x1) - chart.xScale(d.x0) - 1))
-        .attr('y', height) // Start at bottom
-        .attr('height', 0) // Start collapsed
-        .attr('fill', barColor)
-        .attr('rx', 2) // Rounded corners
-        .attr('ry', 2)
-        // Animate to final position/size
-        .transition()
-        .duration(750)
-        .attr('y', d => chart.yScale(d.fraudRatio))
-        .attr('height', d => height - chart.yScale(d.fraudRatio));
-}
-
-function drawTrendLine(domain, chartId) {
-    console.log("drawTrendLine", chartId)
-    const chart = charts.find(c => c.containerId === `chart-${chartId}`);
-    if (!chart) return;
-    
-    // Eliminar elementos existentes si no hay regresión
-    if (!chart.currentRegression) {
-        chart.trendGroup.selectAll('.trend-line, .trend-value').remove();
-        return;
-    }
-
-    const lineGenerator = d3.line()
-        .x(d => chart.xScale(d.x))
-        .y(d => chart.yScale(chart.currentRegression.slope * d.x + chart.currentRegression.intercept));
-
-    const trendData = [
-        { x: domain[0], y: chart.currentRegression.slope * domain[0] + chart.currentRegression.intercept },
-        { x: domain[1], y: chart.currentRegression.slope * domain[1] + chart.currentRegression.intercept }
-    ];
-
-    // Actualizar o crear la línea de tendencia
-    const trendLine = chart.trendGroup.selectAll('.trend-line')
-        .data([trendData]);
-
-    trendLine.enter()
-        .append('path')
-        .attr('class', 'trend-line')
-        .merge(trendLine)
-        .transition()
-        .duration(750)
-        .attr('d', lineGenerator)
-        .attr('opacity', 1);
-
-    trendLine.exit()
-        .transition()
-        .duration(500)
-        .attr('opacity', 0)
-        .remove();
-
-    // Calcular punto medio para mostrar el valor en el centro
-    const midX = (domain[0] + domain[1]) / 2;
-    const midY = chart.currentRegression.slope * midX + chart.currentRegression.intercept;
-    
-    const midPoint = { x: midX, y: midY };
-
-    // Siempre mostrar el valor de la tendencia en el centro si existe
-    const trendLabel = chart.trendGroup.selectAll('.trend-value')
-        .data([midPoint]);
-
-    trendLabel.enter()
-        .append('text')
-        .attr('class', 'trend-value')
-        .merge(trendLabel)
-        .transition()
-        .duration(750)
-        .attr('x', chart.xScale(midPoint.x))
-        .attr('y', chart.yScale(midPoint.y) - 10) // 10px arriba de la línea
-        .attr('text-anchor', 'middle') // Centrar texto horizontalmente
-        .style('font-size', '12px') // Un poco más grande
-        .style('font-weight', 'bold')
-        .style('fill', 'var(--tu-blue)')
-        .text(`${d3.format('.2f')(midPoint.y)}x`);
-
-    trendLabel.exit().remove();
-}
-
-function drawAxesAndGrid(chartId) {
-    console.log("drawAxesAndGrid", chartId)
-    const chart = charts.find(c => c.containerId === `chart-${chartId}`);
-    if (!chart) return;
-
-    // 1. Animate Y-axis update
-    chart.yAxis
-        .transition() // ← Preserve transition
-        .duration(750)
-        .call(d3.axisLeft(chart.yScale).tickFormat(d => d3.format('.1f')(d)));
-
-    // 2. Handle grid with transitions
-    const grid = chart.svg.selectAll('.grid').data([null]);
-
-    // Enter + Update
-    grid.enter()
-        .append('g')
-        .attr('class', 'grid')
-        .merge(grid)
-        .transition() // ← Animate grid lines
-        .duration(750)
-        .call(
-            d3.axisLeft(chart.yScale)
-                .tickSize(-width)  // Full-width grid lines
-                .tickFormat('')     // Hide labels
-        )
-        .call(g => g.select('.domain').remove()); // Remove axis line
-
-    // Exit (if needed)
-    grid.exit()
-        .transition()
-        .duration(500)
-        .remove();
-}
-
-function drawTitle(selectedVariable, binCount, chartId) {
-    console.log("drawTitle", chartId)
-    const chart = charts.find(c => c.containerId === `chart-${chartId}`);
-    if (!chart) return;
-
-    const chartElement = document.getElementById(chartId);
-    if (!chartElement) return;
-
-    const titleElement = chartElement.querySelector('.chart-title');
-    if (titleElement) {
-        titleElement.textContent = `Analysis: ${selectedVariable || 'Select a variable'}`;
-    }
-    updateChartTitle(chartId);
-
-}
-
-function updateChartTitle(chartId) {
-    console.log("updateChartTitle", chartId)
-    const chartElement = document.getElementById(chartId);
-    if (!chartElement) return;
-
-    const chart = charts.find(c => c.containerId === `chart-${chartId}`);
-    if (!chart) return;
-
-    const datasetSelect = chartElement.querySelector('.chart-dataset-select');
-    const variableSelect = chartElement.querySelector('.chart-variable-select');
-    const titleElement = chartElement.querySelector('.chart-title');
-
-    if (datasetSelect && variableSelect && titleElement) {
-        const datasetName = datasetSelect.options[datasetSelect.selectedIndex]?.text || 'Dataset';
-        const variableName = variableSelect.value || 'Select a variable';
-        titleElement.textContent = `Analysis: ${variableName} (${datasetName})`;
-    }
-}
-
-function showTooltip(event, d, chartId) {
-    console.log("showTooltip", chartId)
-    const chart = charts.find(c => c.containerId === `chart-${chartId}`);
-    if (!chart) return;
-
-    const tooltip = d3.select(`#tooltip-${chartId}`);
-    tooltip
-        .style('left', `${event.pageX + 10}px`)
-        .style('top', `${event.pageY - 20}px`);
-    console.log("Tooltip element:", tooltip.node());
-    tooltip.transition().duration(200).style('opacity', 0.9);
-
-    const expectedValue = chart.currentRegression ?
-        chart.currentRegression.slope * d.xMid + chart.currentRegression.intercept : null;
-
-    tooltip.html(`
-        <div><strong>Range:</strong> ${d3.format(',')(d.x0)} - ${d3.format(',')(d.x1)}</div>
-        <div><strong>Fraud Ratio:</strong> ${d3.format('.2f')(d.fraudRatio)}x</div>
-        ${expectedValue ? `
-        <div><strong>Expected Trend:</strong> ${d3.format('.2f')(expectedValue)}x</div>
-        <div><strong>Deviation:</strong> ${d3.format('+.2f')(d.fraudRatio - expectedValue)}x</div>
-        ` : ''}
-        <div><strong>Fraud Rate:</strong> ${d3.format('.1%')(d.fraudRate)}</div>
-        <div><strong>Transactions:</strong> ${d.count.toLocaleString()}</div>
-    `)
-    .style('left', `${event.pageX}px`)
-    .style('top', `${event.pageY}px`);
-}
-
-function hideTooltip(chartId) {
-    d3.select(`#tooltip-${chartId}`).transition().duration(500).style('opacity', 0);
-}
-
-function brushed(event, chartId) {
-    console.log("[1] Event object:", event);  // Inspect full event
-    if (!event.selection) {
-        console.warn("[2] Ignoring null selection");
-        return;  // Early exit if no selection
-    }
-
-    const chart = charts.find(c => c.containerId === `chart-${chartId}`);
-    if (!chart) {
-        console.error("[3] Chart not found for ID:", `${chartId}`);
-        return;
-    }
-
-    // Debug coordinate conversion
-    const [x0_px, x1_px] = event.selection;
-    console.log("[4] Pixel coordinates:", x0_px, x1_px);
-
-    const [x0_data, x1_data] = [x0_px, x1_px].map(chart.xScale.invert);
-    console.log("[5] Data domain:", x0_data, x1_data);  // Should log here!
-
-    // Proceed with zoom
-    chart.xScale.domain([x0_data, x1_data]);
-    chart.brushGroup.call(chart.brush.move, null);
-    updateChart(chart.xScale, chartId);
-}
-
-function resetZoom(chartId) {
-    console.log("Reset: ", chartId)
-    const chart = charts.find(c => c.containerId === `chart-${chartId}`);
-    if (!chart || !chart.chartData) return;
-    
-    // Reset to initial domain
-    chart.xScale.domain(chart.chartData.initialDomain);
-    chart.isZoomed = false;
-    
-    // Clear any brush selection visually
-    chart.brushGroup.call(chart.brush.move, null);
-    
-    // Update the chart
-    updateChart(chart.xScale, chartId);
-}
-
-function linearRegression(data) {
-    if (!data || data.length < 1) return null;
-    
-    if (data.length === 1) {
-        return {
-            slope: 0,
-            intercept: data[0].y
-        };
-    }
-
-    const n = data.length;
-    let sumX = 0, sumY = 0, sumXY = 0, sumXX = 0;
-
-    data.forEach(point => {
-        sumX += point.x;
-        sumY += point.y;
-        sumXY += point.x * point.y;
-        sumXX += point.x * point.x;
-    });
-
-    const denominator = n * sumXX - sumX * sumX;
-    
-    if (denominator === 0) {
-        return {
-            slope: 0,
-            intercept: sumY / n
-        };
-    }
-
-    const slope = (n * sumXY - sumX * sumY) / denominator;
-    const intercept = (sumY - slope * sumX) / n;
-
-    return { slope, intercept };
-}
-
-async function processParquetFile(file) {
-    if (typeof parquet === 'undefined' || !parquet.ParquetReader) {
-        throw new Error('Parquet library not loaded. Please refresh the page.');
-    }
-
-    try {
-        const buffer = await readFileAsArrayBuffer(file);
-        const reader = await parquet.ParquetReader.openBuffer(buffer);
-        const cursor = reader.getCursor();
-
-        const data = [];
-        const columnList = reader.getSchema().fieldList.map(f => f.name);
-
-        if (!columnList.includes(COLUMN_MAPPING.fraudFlag)) {
-            await reader.close();
-            throw new Error(`File must contain '${COLUMN_MAPPING.fraudFlag}' column`);
-        }
-
-        let row;
-        while ((row = await cursor.next())) {
-            data.push(row);
-        }
-
-        await reader.close();
-
-        const availableVariables = columnList.filter(
-            col => ![COLUMN_MAPPING.fraudFlag, COLUMN_MAPPING.sessionId].includes(col.toLowerCase())
+        // Check if any chart is using this dataset
+        const chartsUsingDataset = this.chartManager.charts.filter(chart => 
+            chart.datasetIndex === index
         );
+        
+        if (chartsUsingDataset.length > 0) {
+            if (!confirm(`This dataset is used by ${chartsUsingDataset.length} chart(s). Remove anyway?`)) {
+                return;
+            }
+            
+            // Remove charts using this dataset
+            chartsUsingDataset.forEach(chart => {
+                this.chartManager.removeChart(chart.containerId);
+            });
+        }
+        
+        // Remove the dataset
+        this.datasets.splice(index, 1);
+        
+        // Update UI
+        this.updateFileListUI();
+        
+        // Update dataset indices in all charts
+        this.chartManager.charts.forEach(chart => {
+            if (chart.datasetIndex > index) {
+                chart.datasetIndex--;
+            }
+        });
+    }
 
-        return {
-            sampledData: data,
-            availableVariables,
-            totalRecords: data.length
-        };
-    } catch (error) {
-        console.error('Parquet processing error:', error);
-        throw new Error(`Parquet processing failed: ${error.message}`);
+    showFileMessage(message, type = 'info') {
+        const element = document.getElementById('file-info');
+        if (element) {
+            element.textContent = message;
+            element.style.color = type === 'error' ? 'red' :
+                type === 'success' ? 'var(--tu-blue)' :
+                'var(--tu-dark-gray)';
+        }
+    }
+
+    showFileError(message) {
+        this.showFileMessage(message, 'error');
     }
 }
 
-async function processCSVFile(file) {
-    return new Promise((resolve, reject) => {
-        const worker = new Worker('js/worker.js');
-
-        worker.onmessage = function(e) {
-            if (e.data.error) {
-                reject(new Error(e.data.error));
-                return;
-            }
-
-            if (!e.data.sampledData || !Array.isArray(e.data.sampledData)) {
-                reject(new Error('Invalid data format'));
-                return;
-            }
-
-            worker.terminate();
-            resolve(e.data);
-        };
-
-        worker.onerror = (error) => {
-            reject(new Error(`Worker error: ${error.message}`));
-            worker.terminate();
-        };
-
-        worker.postMessage({
-            file: file,
-            columnMappings: COLUMN_MAPPING
-        });
-    });
-}
-
-function readFileAsArrayBuffer(file) {
-    return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-
-        reader.onload = () => resolve(reader.result);
-        reader.onerror = () => reject(new Error('File read error'));
-        reader.onabort = () => reject(new Error('File read aborted'));
-
-        reader.readAsArrayBuffer(file);
-    });
-}
-
-function showFileMessage(message, type = 'info') {
-    const element = document.getElementById("file-info");
-    element.textContent = message;
-    element.style.color = type === 'error' ? 'red' :
-        type === 'success' ? 'var(--tu-blue)' :
-        'var(--tu-dark-gray)';
-}
-
-function showFileError(message) {
-    showFileMessage(message, 'error');
-}
+// Initialize application when DOM is ready
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('DOM Content Loaded - Starting app initialization');
+    
+    // Wait a brief moment for all scripts to load
+    setTimeout(function() {
+        if (typeof App !== 'undefined') {
+            window.app = new App();
+            window.app.init();
+            console.log('App initialized successfully');
+        } else {
+            console.error('App class not defined. Available classes:');
+            console.log('- DataProcessor:', typeof DataProcessor);
+            console.log('- ChartRenderer:', typeof ChartRenderer);
+            console.log('- ExportManager:', typeof ExportManager);
+            console.log('- MergeManager:', typeof MergeManager);
+            console.log('- ChartManager:', typeof ChartManager);
+            console.log('- App:', typeof App);
+        }
+    }, 100);
+});

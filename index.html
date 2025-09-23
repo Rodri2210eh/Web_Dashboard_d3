@@ -1,34 +1,24 @@
 <!DOCTYPE html>
-<html lang="es">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Feature Importance Visualization</title>
-    <!-- D3.js library for data visualization -->
     <script src="https://d3js.org/d3.v7.min.js"></script>
-    <!-- Parquet.js library for Parquet file support -->
     <script src="https://cdn.jsdelivr.net/npm/parquetjs@0.11.2/dist/parquet.min.js"></script>
-    <!-- canvg for SVG to Canvas conversion -->
-    <script src="https://cdn.jsdelivr.net/npm/canvg/dist/browser/canvg.min.js"></script>
-    <!-- Main JavaScript file -->
-    <script src="js/main.js" defer></script>
-    <!-- CSS styles -->
     <link rel="stylesheet" href="css/styles.css">
+    <link rel="stylesheet" href="css/chart-types.css">
 </head>
 <body>
-    <!-- Header section -->
     <header>
         <div class="container">
             <h1>Feature Importance Visualization</h1>
         </div>
     </header>
 
-    <!-- Main content area -->
     <main class="container">
-        <!-- Control panel for user inputs -->
         <section id="controls">
             <div class="control-group">
-                <!-- File upload button -->
                 <label for="file-upload" class="file-upload">
                     Select CSV/Parquet Files
                 </label>
@@ -41,12 +31,12 @@
             <div class="control-group">
                 <button id="add-chart">Add New Chart</button>
                 <button id="export-charts">Export Charts as Image</button>
+                <button id="join-charts">Merge Charts</button>
             </div>
         </section>
         
-        <!-- Chart container -->
         <section class="charts-grid" id="charts-grid">
-            <!-- Charts will be added here in a grid layout -->
+            <!-- Charts will be dynamically added here -->
         </section>
     </main>
 
@@ -54,8 +44,7 @@
     <div id="export-modal" class="modal">
         <div class="modal-content">
             <h3>Select Charts to Export</h3>
-            <div class="charts-list">
-            </div>
+            <div class="charts-list"></div>
             <div class="modal-actions">
                 <button id="select-all">Select All</button>
                 <button id="export-selected">Export Selected</button>
@@ -63,5 +52,70 @@
             </div>
         </div>
     </div>
+
+    <!-- Merge Modal -->
+    <div id="join-modal" class="modal">
+        <div class="modal-content">
+            <h3>Select Charts to Merge</h3>
+            <p>Select two charts with the same feature to combine them:</p>
+            <div class="charts-list"></div>
+            <div class="modal-actions">
+                <button id="confirm-join">Merge Charts</button>
+                <button id="cancel-join">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Debug Script -->
+    <script>
+        // Debug script to check if everything is loading correctly
+        console.log('=== DEBUG: Checking dependencies ===');
+        console.log('D3.js loaded:', typeof d3 !== 'undefined');
+        console.log('Parquet.js loaded:', typeof parquet !== 'undefined');
+        
+        // Check if page elements exist
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('DOM fully loaded');
+            console.log('File upload element:', document.getElementById('file-upload'));
+            console.log('Add chart button:', document.getElementById('add-chart'));
+            console.log('Charts grid:', document.getElementById('charts-grid'));
+        });
+    </script>
+
+    <!-- Load JavaScript files -->
+    <script src="js/data-processor.js"></script>
+    <script src="js/chart-types.js"></script>
+    <script src="js/export-manager.js"></script>
+    <script src="js/merge-manager.js"></script>
+    <script src="js/chart-manager.js"></script>
+    <script src="js/main.js"></script>
+
+    <!-- Initialize application -->
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('=== Initializing Application ===');
+            
+            // Check if all required classes are available
+            const requiredClasses = ['DataProcessor', 'ChartRenderer', 'ExportManager', 'MergeManager', 'ChartManager', 'App'];
+            const missingClasses = requiredClasses.filter(cls => typeof window[cls] === 'undefined');
+            
+            if (missingClasses.length > 0) {
+                console.error('Missing classes:', missingClasses);
+                alert('Error: Some required components failed to load. Please check the console for details.');
+                return;
+            }
+            
+            console.log('All classes loaded successfully');
+            
+            // Initialize the application
+            if (typeof App !== 'undefined') {
+                window.app = new App();
+                window.app.init();
+                console.log('Application initialized successfully');
+            } else {
+                console.error('App class not found');
+            }
+        });
+    </script>
 </body>
 </html>
