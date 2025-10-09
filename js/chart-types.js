@@ -9,12 +9,13 @@ class ChartRenderer {
             'bar-horizontal': this.drawHorizontalBars.bind(this),
             'smooth-line': this.drawSmoothLineChart.bind(this),
             'step': this.drawStepChart.bind(this),
-            'dot': this.drawDotPlot.bind(this)
+            'dot': this.drawDotPlot.bind(this),
+            'compare-histogram': this.drawCompareHistogram.bind(this)
         };
     }
 
     drawChart(chartId, chart) {
-        if (!chart || !chart.currentBins) return;
+        if (!chart) return;
         
         const chartElement = document.getElementById(chartId);
         const chartTypeSelect = chartElement.querySelector('.chart-type-select');
@@ -22,6 +23,19 @@ class ChartRenderer {
         
         // Clear existing chart elements
         chart.barsGroup.selectAll('*').remove();
+        
+        // For comparison charts, we need compareData
+        if (chartType === 'compare-histogram') {
+            if (!chart.compareData) {
+                console.error('No comparison data available');
+                return;
+            }
+            this.drawCompareHistogram(chartId, chart);
+            return;
+        }
+        
+        // For regular charts, we need currentBins
+        if (!chart.currentBins) return;
         
         const renderFunction = this.chartTypes[chartType];
         if (renderFunction) {
@@ -309,5 +323,256 @@ class ChartRenderer {
         
         const colorPicker = chartElement.querySelector('.color-picker-input');
         return colorPicker ? colorPicker.value : '#F68D2E';
+    }
+ 
+    drawCompareHistogram(chartId, chart) {
+        if (!chart.compareData || !chart.compareData.series1 || !chart.compareData.series2) {
+            console.error('Comparative data not available');
+            return;
+        }
+
+        // Clear existing elements including trend line
+        chart.barsGroup.selectAll('*').remove();
+        chart.trendGroup.selectAll('*').remove(); // Clear trend line
+
+        const { series1, series2, ksStat, pValue, variableName } = chart.compareData;
+        
+        // Get colors from the dynamic color pickers
+        const chartElement = document.getElementById(chartId);
+        const colorPicker1 = chartElement ? chartElement.querySelector('.color-picker-1') : null;
+        const colorPicker2 = chartElement ? chartElement.querySelector('.color-picker-2') : null;
+        
+        const color1 = colorPicker1 ? colorPicker1.value : '#ff6b6b';
+        const color2 = colorPicker2 ? colorPicker2.value : '#4ecdc4';
+
+        // Configure scales
+        const xScale = chart.xScale;
+        const allValues = [...series1, ...series2];
+        const domain = [d3.min(allValues), d3.max(allValues)];
+        xScale.domain(domain);
+
+        // Create histograms for density calculation
+        const histogram = d3.histogram()
+            .domain(xScale.domain())
+            .thresholds(xScale.ticks(30));
+
+        const bins1 = histogram(series1);
+        const bins2 = histogram(series2);
+
+        // Calculate densities
+        const density1 = bins1.map(bin => ({
+            x0: bin.x0,
+            x1: bin.x1,
+            xMid: (bin.x0 + bin.x1) / 2,
+            density: bin.length / series1.length
+        }));
+
+        const density2 = bins2.map(bin => ({
+            x0: bin.x0,
+            x1: bin.x1,
+            xMid: (bin.x0 + bin.x1) / 2,
+            density: bin.length / series2.length
+        }));
+
+        // Find maximum density for Y axis scaling
+        const maxDensity1 = d3.max(density1, d => d.density);
+        const maxDensity2 = d3.max(density2, d => d.density);
+        const maxDensity = Math.max(maxDensity1, maxDensity2) * 1.1;
+
+        // Set Y scale for density
+        chart.yScale.domain([0, maxDensity]);
+
+        // Draw density bars for series1 (fraud=1)
+        chart.barsGroup.selectAll('.density-bar-1')
+            .data(density1)
+            .enter()
+            .append('rect')
+            .attr('class', 'density-bar density-bar-1')
+            .attr('x', d => xScale(d.x0))
+            .attr('width', d => Math.max(1, xScale(d.x1) - xScale(d.x0) - 1))
+            .attr('y', d => chart.yScale(d.density))
+            .attr('height', d => chart.height - chart.yScale(d.density))
+            .attr('fill', color1)
+            .attr('opacity', 0.6)
+            .attr('rx', 2)
+            .attr('ry', 2);
+
+        // Draw density bars for series2 (fraud=0)
+        chart.barsGroup.selectAll('.density-bar-2')
+            .data(density2)
+            .enter()
+            .append('rect')
+            .attr('class', 'density-bar density-bar-2')
+            .attr('x', d => xScale(d.x0))
+            .attr('width', d => Math.max(1, xScale(d.x1) - xScale(d.x0) - 1))
+            .attr('y', d => chart.yScale(d.density))
+            .attr('height', d => chart.height - chart.yScale(d.density))
+            .attr('fill', color2)
+            .attr('opacity', 0.6)
+            .attr('rx', 2)
+            .attr('ry', 2);
+
+        // Add density lines (KDE)
+        this.drawDensityLine(chartId, chart, series1, color1, 'density-line-1', '5,5');
+        this.drawDensityLine(chartId, chart, series2, color2, 'density-line-2', 'none');
+
+        // Add KS info and legend
+        this.addKSInfo(chartId, chart, ksStat, pValue);
+        this.addCompareLegend(chartId, chart, color1, color2);
+
+        // Update axes
+        this.updateCompareAxes(chartId, chart);
+    }
+
+    drawDensityLine(chartId, chart, data, color, className, dashArray) {
+        // Kernel Density Estimation for smooth density lines
+        const bandwidth = 0.1;
+        const xScale = chart.xScale;
+        const yScale = chart.yScale;
+        
+        const xValues = d3.range(xScale.domain()[0], xScale.domain()[1], 
+                                (xScale.domain()[1] - xScale.domain()[0]) / 100);
+        
+        const densities = xValues.map(x => {
+            let density = 0;
+            data.forEach(d => {
+                density += this.gaussianKernel((x - d) / bandwidth);
+            });
+            return { x, y: density / (data.length * bandwidth) };
+        });
+
+        const line = d3.line()
+            .x(d => xScale(d.x))
+            .y(d => yScale(d.y))
+            .curve(d3.curveBasis);
+
+        chart.barsGroup.append('path')
+            .datum(densities)
+            .attr('class', className)
+            .attr('d', line)
+            .attr('fill', 'none')
+            .attr('stroke', color)
+            .attr('stroke-width', 2)
+            .attr('stroke-dasharray', dashArray)
+            .attr('opacity', 0.8);
+    }
+
+    updateCompareAxes(chartId, chart) {
+        // Update X axis
+        chart.xAxis
+            .transition()
+            .duration(750)
+            .call(d3.axisBottom(chart.xScale));
+
+        // Update Y axis for density
+        chart.yAxis
+            .transition()
+            .duration(750)
+            .call(d3.axisLeft(chart.yScale).tickFormat(d3.format('.3f')));
+
+        // Add axis labels
+        chart.svg.selectAll('.axis-label').remove();
+        
+        // X axis label
+        chart.svg.append('text')
+            .attr('class', 'axis-label')
+            .attr('x', chart.width / 2)
+            .attr('y', chart.height + 40)
+            .attr('text-anchor', 'middle')
+            .style('font-size', '12px')
+            .text('Feature Value');
+
+        // Y axis label
+        chart.svg.append('text')
+            .attr('class', 'axis-label')
+            .attr('transform', 'rotate(-90)')
+            .attr('y', -40)
+            .attr('x', -chart.height / 2)
+            .attr('text-anchor', 'middle')
+            .style('font-size', '12px')
+            .text('Density');
+    }
+
+    gaussianKernel(u) {
+        return (1 / Math.sqrt(2 * Math.PI)) * Math.exp(-0.5 * u * u);
+    }
+
+    addKSInfo(chartId, chart, ksStat, pValue) {
+        // Add KS statistic prominently at the top
+        chart.barsGroup.append('text')
+            .attr('class', 'ks-statistic')
+            .attr('x', chart.width / 2)
+            .attr('y', -30)
+            .attr('text-anchor', 'middle')
+            .style('font-size', '14px')
+            .style('font-weight', 'bold')
+            .style('fill', '#333')
+            .text(`KS = ${ksStat.toFixed(4)} ; p_value = ${pValue.toExponential(2)}`);
+    }
+
+    addCompareLegend(chartId, chart, color1, color2) {
+        // Clear existing legend
+        chart.barsGroup.selectAll('.legend-group').remove();
+
+        // Create legend group
+        const legendGroup = chart.barsGroup.append('g')
+            .attr('class', 'legend-group')
+            .attr('transform', `translate(${chart.width - 180}, 20)`);
+
+        // Legend title
+        legendGroup.append('text')
+            .attr('class', 'legend-title')
+            .attr('x', 0)
+            .attr('y', 0)
+            .style('font-size', '12px')
+            .style('font-weight', 'bold')
+            .style('fill', '#333')
+            .text('Distribution:');
+
+        // Fraud=1 legend item - LINE ONLY
+        const legend1 = legendGroup.append('g')
+            .attr('class', 'legend-item')
+            .attr('transform', 'translate(0, 20)');
+
+        legend1.append('line')
+            .attr('class', 'legend-color-1')
+            .attr('x1', 0)
+            .attr('x2', 15)
+            .attr('y1', 0)
+            .attr('y2', 0)
+            .attr('stroke', color1)
+            .attr('stroke-width', 3)
+            .attr('stroke-dasharray', '5,5');
+
+        legend1.append('text')
+            .attr('x', 20)
+            .attr('y', 0)
+            .attr('dy', '0.35em')
+            .style('font-size', '11px')
+            .style('fill', '#333')
+            .text('fraud = 1');
+
+        // Fraud=0 legend item - LINE ONLY
+        const legend2 = legendGroup.append('g')
+            .attr('class', 'legend-item')
+            .attr('transform', 'translate(0, 40)');
+
+        legend2.append('line')
+            .attr('class', 'legend-color-2')
+            .attr('x1', 0)
+            .attr('x2', 15)
+            .attr('y1', 0)
+            .attr('y2', 0)
+            .attr('stroke', color2)
+            .attr('stroke-width', 3)
+            .attr('stroke-dasharray', 'none');
+
+        legend2.append('text')
+            .attr('x', 20)
+            .attr('y', 0)
+            .attr('dy', '0.35em')
+            .style('font-size', '11px')
+            .style('fill', '#333')
+            .text('fraud = 0');
     }
 }

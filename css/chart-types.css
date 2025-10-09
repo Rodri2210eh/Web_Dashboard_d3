@@ -155,3 +155,107 @@
     opacity: 0.7;
     transition: cx 0.75s ease, cy 0.75s ease;
 }
+
+.color-picker {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+/* Enhanced styles for dynamic color pickers */
+.color-picker-container {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-left: 10px;
+}
+
+.ks-statistic {
+    font-size: 14px;
+    fill: #333;
+    font-weight: bold;
+    background-color: rgba(255, 255, 255, 0.9);
+}
+
+.density-bar-1,
+.density-bar-2 {
+    opacity: 0.6;
+    transition: fill 0.3s ease;
+}
+
+.density-line-1,
+.density-line-2 {
+    pointer-events: none;
+    transition: stroke 0.3s ease;
+}
+
+.axis-label {
+    font-size: 12px;
+    fill: #333;
+    font-weight: bold;
+}
+
+.colors-inline-container {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    margin-left: 8px;
+}
+
+.color-group {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.color-label {
+    font-size: 11px;
+    color: var(--tu-dark-gray);
+    white-space: nowrap;
+}
+
+.color-picker-input {
+    width: 25px;
+    height: 25px;
+    padding: 1px;
+    border: 1px solid #ddd;
+    border-radius: 3px;
+    cursor: pointer;
+    transition: border-color 0.2s ease;
+}
+
+.color-picker-input:hover {
+    border-color: var(--tu-blue);
+}
+
+.comparative-colors {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.color-picker-label {
+    font-size: 12px;
+    color: var(--tu-dark-gray);
+    font-weight: bold;
+    white-space: nowrap;
+}
+
+.legend-group {
+    pointer-events: none;
+}
+
+.legend-title {
+    font-size: 12px;
+    fill: #333;
+    font-weight: bold;
+}
+
+.legend-item text {
+    font-size: 11px;
+    fill: #333;
+}
+
+.legend-item line {
+    pointer-events: none;
+}
