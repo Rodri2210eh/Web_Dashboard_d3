@@ -89,27 +89,5 @@
     <script src="js/merge-manager.js"></script>
     <script src="js/chart-manager.js"></script>
     <script src="js/main.js"></script>
-
-    <!-- Initialize application -->
-    <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            console.log('=== Initializing Application ===');
-            
-            // Check if all required classes are available
-            const requiredClasses = ['DataProcessor', 'ChartRenderer', 'ExportManager', 'MergeManager', 'ChartManager', 'App'];
-            const missingClasses = requiredClasses.filter(cls => typeof window[cls] === 'undefined');
-            
-            console.log('All classes loaded successfully');
-            
-            // Initialize the application
-            if (typeof App !== 'undefined') {
-                window.app = new App();
-                window.app.init();
-                console.log('Application initialized successfully');
-            } else {
-                console.error('App class not found');
-            }
-        });
-    </script>
 </body>
 </html>
