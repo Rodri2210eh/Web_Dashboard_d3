@@ -340,14 +340,13 @@ class ChartManager {
             
         const yAxis = axesGroup.append('g').attr('class', 'y-axis axis');
         
+        // Initialize brush but don't attach events yet - they will be conditionally set
         const brushGroup = svg.append('g').attr('class', 'brush-group');
         const brush = d3.brushX()
-            .extent([[0, 0], [chartWidth, chartHeight]])
-            .on('end', (event) => this.handleBrush(event, containerId));
+            .extent([[0, 0], [chartWidth, chartHeight]]);
 
-        brushGroup.call(brush);
-        
-        svg.on('dblclick', () => this.resetZoom(containerId));
+        // Double-click event will be conditionally handled
+        svg.on('dblclick', () => {}); // Empty handler for now
 
         return {
             containerId: `chart-${containerId}`,
@@ -370,6 +369,32 @@ class ChartManager {
             height: chartHeight,
             datasetIndex: 0
         };
+    }
+
+    setupChartZoom(chartId, chartType) {
+        const chart = this.charts.find(c => c.containerId === `chart-${chartId}`);
+        if (!chart) return;
+
+        const isComparisonChart = chartType === 'compare-histogram';
+
+        // Remove existing brush
+        chart.brushGroup.selectAll('*').remove();
+
+        if (!isComparisonChart) {
+            // Enable zoom for non-comparison charts
+            chart.brush = d3.brushX()
+                .extent([[0, 0], [chart.width, chart.height]])
+                .on('end', (event) => this.handleBrush(event, chartId));
+
+            chart.brushGroup.call(chart.brush);
+            
+            // Enable double-click to reset zoom
+            chart.svg.on('dblclick', () => this.resetZoom(chartId));
+        } else {
+            // Disable zoom for comparison charts
+            chart.brush = null;
+            chart.svg.on('dblclick', null);
+        }
     }
 
     setupChartEventListeners(chartId, datasets) {
@@ -686,6 +711,9 @@ class ChartManager {
                 
                 // Update chart title for comparison
                 this.updateCompareChartTitle(chartId, selectedVariable);
+                
+                // DISABLE ZOOM FOR COMPARISON CHARTS
+                this.setupChartZoom(chartId, chartType);
                 return;
             } else {
                 console.log('Comparison data preparation failed, falling back to regular histogram');
@@ -696,6 +724,9 @@ class ChartManager {
             if (chart.compareData) {
                 chart.compareData = null;
             }
+            
+            // ENABLE ZOOM FOR REGULAR CHARTS
+            this.setupChartZoom(chartId, chartType);
         }
         
         // Only for NON-comparison charts use bin count
@@ -817,6 +848,11 @@ class ChartManager {
             return;
         }
 
+        // For comparison charts, don't draw trend line during zoom
+        const chartElement = document.getElementById(chartId);
+        const chartTypeSelect = chartElement ? chartElement.querySelector('.chart-type-select') : null;
+        const isComparisonChart = chartTypeSelect && chartTypeSelect.value === 'compare-histogram';
+
         const { values, flags, selectedVariable, binCount } = chart.chartData;
         const domain = xScale.domain();
 
@@ -858,7 +894,13 @@ class ChartManager {
         });
 
         chart.currentBins = binsWithStats;
-        chart.currentRegression = this.calculateRegression(binsWithStats);
+        
+        // Only calculate regression for non-comparison charts
+        if (!isComparisonChart) {
+            chart.currentRegression = this.calculateRegression(binsWithStats);
+        } else {
+            chart.currentRegression = null; // Clear regression for comparison charts
+        }
 
         const maxBarValue = d3.max(binsWithStats, d => d.fraudRatio);
         const maxTrendValue = chart.currentRegression ?
@@ -871,7 +913,15 @@ class ChartManager {
         chart.yScale.domain([0, maxYValue]);
 
         this.chartRenderer.drawChart(chartId, chart);
-        this.drawTrendLine(domain, chartId);
+        
+        // Only draw trend line for non-comparison charts
+        if (!isComparisonChart) {
+            this.drawTrendLine(domain, chartId);
+        } else {
+            // Clear any existing trend line for comparison charts
+            chart.trendGroup.selectAll('.trend-line, .trend-value').remove();
+        }
+        
         this.drawAxesAndGrid(chartId);
         this.drawTitle(selectedVariable, binsWithStats.length, chartId);
     }
@@ -1049,6 +1099,17 @@ class ChartManager {
         const chart = this.charts.find(c => c.containerId === `chart-${chartId}`);
         if (!chart) return;
 
+        // Check if this is a comparison chart
+        const chartElement = document.getElementById(chartId);
+        const chartTypeSelect = chartElement ? chartElement.querySelector('.chart-type-select') : null;
+        const isComparisonChart = chartTypeSelect && chartTypeSelect.value === 'compare-histogram';
+
+        // Disable zoom for comparison charts
+        if (isComparisonChart) {
+            chart.brushGroup.call(chart.brush.move, null); // Clear brush selection
+            return;
+        }
+
         const [x0_px, x1_px] = event.selection;
         const [x0_data, x1_data] = [x0_px, x1_px].map(chart.xScale.invert);
 
@@ -1060,6 +1121,14 @@ class ChartManager {
     resetZoom(chartId) {
         const chart = this.charts.find(c => c.containerId === `chart-${chartId}`);
         if (!chart || !chart.chartData) return;
+        
+        // Check if this is a comparison chart
+        const chartElement = document.getElementById(chartId);
+        const chartTypeSelect = chartElement ? chartElement.querySelector('.chart-type-select') : null;
+        const isComparisonChart = chartTypeSelect && chartTypeSelect.value === 'compare-histogram';
+
+        // Disable zoom reset for comparison charts
+        if (isComparisonChart) return;
         
         chart.xScale.domain(chart.chartData.initialDomain);
         chart.isZoomed = false;
