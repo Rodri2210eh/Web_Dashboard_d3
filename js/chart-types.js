@@ -10,7 +10,8 @@ class ChartRenderer {
             'smooth-line': this.drawSmoothLineChart.bind(this),
             'step': this.drawStepChart.bind(this),
             'dot': this.drawDotPlot.bind(this),
-            'compare-histogram': this.drawCompareHistogram.bind(this)
+            'compare-histogram': this.drawCompareHistogram.bind(this),
+            'outlier-detection': this.drawOutlierDetection.bind(this)
         };
     }
 
@@ -574,5 +575,220 @@ class ChartRenderer {
             .style('font-size', '11px')
             .style('fill', '#333')
             .text('fraud = 0');
+    }
+
+    //outlier chart
+    drawOutlierDetection(chartId, chart) {
+        if (!chart.outlierData) {
+            console.error('No outlier data available');
+            return;
+        }
+
+        // Clear existing elements
+        chart.barsGroup.selectAll('*').remove();
+
+        const { outliers, nonOutliers, bounds, variableName } = chart.outlierData;
+        
+        // Get colors
+        const chartElement = document.getElementById(chartId);
+        const colorPicker = chartElement ? chartElement.querySelector('.color-picker-input') : null;
+        const mainColor = colorPicker ? colorPicker.value : '#F68D2E';
+        const outlierColor = '#ff4444';
+        const nonOutlierColor = '#4ecdc4';
+
+        // Configure scales
+        const allValues = [...outliers, ...nonOutliers].map(d => d.value);
+        const domain = [d3.min(allValues), d3.max(allValues)];
+        chart.xScale.domain(domain);
+        
+        // Use the entire height for the strip plot
+        const padding = 20;
+        const stripHeight = Math.max(10, (chart.height - 2 * padding) / allValues.length);
+
+        // Draw non-outliers first
+        chart.barsGroup.selectAll('.non-outlier')
+            .data(nonOutliers)
+            .enter()
+            .append('circle')
+            .attr('class', 'non-outlier')
+            .attr('cx', d => chart.xScale(d.value))
+            .attr('cy', (d, i) => padding + i * stripHeight)
+            .attr('r', 3)
+            .attr('fill', nonOutlierColor)
+            .attr('opacity', 0.7)
+            .attr('stroke', '#fff')
+            .attr('stroke-width', 1);
+
+        // Draw outliers
+        chart.barsGroup.selectAll('.outlier-point')
+            .data(outliers)
+            .enter()
+            .append('circle')
+            .attr('class', 'outlier-point')
+            .attr('cx', d => chart.xScale(d.value))
+            .attr('cy', (d, i) => padding + (nonOutliers.length + i) * stripHeight)
+            .attr('r', 5)
+            .attr('fill', outlierColor)
+            .attr('opacity', 0.9)
+            .attr('stroke', '#fff')
+            .attr('stroke-width', 2);
+
+        // Draw bounds lines
+        chart.barsGroup.append('line')
+            .attr('class', 'bound-line')
+            .attr('x1', chart.xScale(bounds.lower))
+            .attr('x2', chart.xScale(bounds.lower))
+            .attr('y1', 0)
+            .attr('y2', chart.height)
+            .attr('stroke', '#ff6b6b')
+            .attr('stroke-width', 2)
+            .attr('stroke-dasharray', '5,5')
+            .attr('opacity', 0.7);
+
+        chart.barsGroup.append('line')
+            .attr('class', 'bound-line')
+            .attr('x1', chart.xScale(bounds.upper))
+            .attr('x2', chart.xScale(bounds.upper))
+            .attr('y1', 0)
+            .attr('y2', chart.height)
+            .attr('stroke', '#ff6b6b')
+            .attr('stroke-width', 2)
+            .attr('stroke-dasharray', '5,5')
+            .attr('opacity', 0.7);
+
+        // Add bounds labels
+        chart.barsGroup.append('text')
+            .attr('class', 'bound-label')
+            .attr('x', chart.xScale(bounds.lower))
+            .attr('y', 15)
+            .attr('text-anchor', 'middle')
+            .style('font-size', '11px')
+            .style('fill', '#ff6b6b')
+            .style('font-weight', 'bold')
+            .text(`Lower: ${bounds.lower.toFixed(2)}`);
+
+        chart.barsGroup.append('text')
+            .attr('class', 'bound-label')
+            .attr('x', chart.xScale(bounds.upper))
+            .attr('y', 15)
+            .attr('text-anchor', 'middle')
+            .style('font-size', '11px')
+            .style('fill', '#ff6b6b')
+            .style('font-weight', 'bold')
+            .text(`Upper: ${bounds.upper.toFixed(2)}`);
+
+        // Add statistics info
+        this.addOutlierStatistics(chartId, chart);
+        this.addOutlierLegend(chartId, chart, outlierColor, nonOutlierColor);
+
+        // Update axes
+        this.updateOutlierAxes(chartId, chart);
+    }
+
+    addOutlierStatistics(chartId, chart) {
+        const { outliers, nonOutliers, bounds } = chart.outlierData;
+        const totalPoints = outliers.length + nonOutliers.length;
+        const outlierPercentage = (outliers.length / totalPoints * 100).toFixed(1);
+
+        chart.barsGroup.append('text')
+            .attr('class', 'outlier-stats')
+            .attr('x', chart.width / 2)
+            .attr('y', -20)
+            .attr('text-anchor', 'middle')
+            .style('font-size', '14px')
+            .style('font-weight', 'bold')
+            .style('fill', '#333')
+            .text(`Outliers: ${outliers.length}/${totalPoints} (${outlierPercentage}%)`);
+
+        // Add IQR info
+        chart.barsGroup.append('text')
+            .attr('class', 'iqr-info')
+            .attr('x', chart.width / 2)
+            .attr('y', -5)
+            .attr('text-anchor', 'middle')
+            .style('font-size', '12px')
+            .style('fill', '#666')
+            .text(`IQR: [${bounds.q1.toFixed(2)}, ${bounds.q3.toFixed(2)}]`);
+    }
+
+    addOutlierLegend(chartId, chart, outlierColor, nonOutlierColor) {
+        const legendGroup = chart.barsGroup.append('g')
+            .attr('class', 'outlier-legend')
+            .attr('transform', `translate(${chart.width - 150}, 20)`);
+
+        // Legend title
+        legendGroup.append('text')
+            .attr('class', 'legend-title')
+            .attr('x', 0)
+            .attr('y', 0)
+            .style('font-size', '12px')
+            .style('font-weight', 'bold')
+            .style('fill', '#333')
+            .text('Points:');
+
+        // Non-outlier legend
+        const nonOutlierLegend = legendGroup.append('g')
+            .attr('class', 'legend-item')
+            .attr('transform', 'translate(0, 20)');
+
+        nonOutlierLegend.append('circle')
+            .attr('cx', 0)
+            .attr('cy', 0)
+            .attr('r', 4)
+            .attr('fill', nonOutlierColor)
+            .attr('opacity', 0.7);
+
+        nonOutlierLegend.append('text')
+            .attr('x', 10)
+            .attr('y', 0)
+            .attr('dy', '0.35em')
+            .style('font-size', '11px')
+            .style('fill', '#333')
+            .text('Normal');
+
+        // Outlier legend
+        const outlierLegend = legendGroup.append('g')
+            .attr('class', 'legend-item')
+            .attr('transform', 'translate(0, 40)');
+
+        outlierLegend.append('circle')
+            .attr('cx', 0)
+            .attr('cy', 0)
+            .attr('r', 4)
+            .attr('fill', outlierColor)
+            .attr('opacity', 0.9);
+
+        outlierLegend.append('text')
+            .attr('x', 10)
+            .attr('y', 0)
+            .attr('dy', '0.35em')
+            .style('font-size', '11px')
+            .style('fill', '#333')
+            .text('Outlier');
+    }
+
+    updateOutlierAxes(chartId, chart) {
+        // Update X axis
+        chart.xAxis
+            .transition()
+            .duration(750)
+            .call(d3.axisBottom(chart.xScale));
+
+        // Hide Y axis for outlier detection (it's just a strip plot)
+        chart.yAxis
+            .transition()
+            .duration(750)
+            .call(d3.axisLeft(chart.yScale).tickValues([]));
+
+        // Add axis labels
+        chart.svg.selectAll('.axis-label').remove();
+        
+        chart.svg.append('text')
+            .attr('class', 'axis-label')
+            .attr('x', chart.width / 2)
+            .attr('y', chart.height + 40)
+            .attr('text-anchor', 'middle')
+            .style('font-size', '12px')
+            .text('Feature Value');
     }
 }

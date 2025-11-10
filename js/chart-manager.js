@@ -242,7 +242,8 @@ class ChartManager {
             { value: 'smooth-line', text: 'Smooth Line' },
             { value: 'step', text: 'Step Chart' },
             { value: 'dot', text: 'Dot Plot' },
-            { value: 'compare-histogram', text: 'Compare Histograms (KS Test)' }
+            { value: 'compare-histogram', text: 'Compare Histograms (KS Test)' },
+            { value: 'outlier-detection', text: 'Outlier Detection (IQR)' }
         ];
         
         chartTypes.forEach(type => {
@@ -375,7 +376,7 @@ class ChartManager {
         const chart = this.charts.find(c => c.containerId === `chart-${chartId}`);
         if (!chart) return;
 
-        const isComparisonChart = chartType === 'compare-histogram';
+        const isComparisonChart = chartType === 'compare-histogram' || chartType === 'outlier-detection';
 
         // Remove existing brush
         chart.brushGroup.selectAll('*').remove();
@@ -728,6 +729,26 @@ class ChartManager {
             // ENABLE ZOOM FOR REGULAR CHARTS
             this.setupChartZoom(chartId, chartType);
         }
+
+        if (chartType === 'outlier-detection') {
+            console.log('Outlier detection chart - using IQR method');
+            
+            const outlierData = this.prepareOutlierData(chartId, selectedVariable);
+            if (outlierData) {
+                chart.outlierData = outlierData;
+                this.updateOutlierChart(chart.xScale, chartId);
+                
+                // Update chart title for outlier detection
+                this.updateOutlierChartTitle(chartId, selectedVariable);
+                
+                // Disable zoom for outlier detection
+                this.setupChartZoom(chartId, chartType);
+                return;
+            } else {
+                console.log('Outlier data preparation failed');
+                return;
+            }
+        }
         
         // Only for NON-comparison charts use bin count
         this.analyzeData(this.app.datasets[chart.datasetIndex].data, selectedVariable, binCountValue, chartId);
@@ -851,7 +872,7 @@ class ChartManager {
         // For comparison charts, don't draw trend line during zoom
         const chartElement = document.getElementById(chartId);
         const chartTypeSelect = chartElement ? chartElement.querySelector('.chart-type-select') : null;
-        const isComparisonChart = chartTypeSelect && chartTypeSelect.value === 'compare-histogram';
+        const isComparisonChart = chartTypeSelect && (chartTypeSelect.value === 'compare-histogram' || chartTypeSelect.value === 'outlier-detection');
 
         const { values, flags, selectedVariable, binCount } = chart.chartData;
         const domain = xScale.domain();
@@ -1223,6 +1244,117 @@ class ChartManager {
                     console.log('Found potential bin control:', control.className, control);
                 }
             });
+        }
+    }
+
+    // outliers functions
+    prepareOutlierData(chartId, variableName) {
+        const chart = this.charts.find(c => c.containerId === `chart-${chartId}`);
+        if (!chart || !this.app || !this.app.datasets || this.app.datasets.length === 0) {
+            console.error('No datasets available');
+            return null;
+        }
+
+        const currentDataset = this.app.datasets[chart.datasetIndex];
+        
+        // Extract values and calculate outliers
+        const values = [];
+        const dataPoints = [];
+        
+        for (let i = 0; i < currentDataset.data.length; i++) {
+            const row = currentDataset.data[i];
+            const value = parseFloat(row[variableName]);
+            const fraudFlag = parseInt(row[this.config.columnMapping.fraudFlag]);
+            
+            if (!isNaN(value)) {
+                values.push(value);
+                dataPoints.push({
+                    value: value,
+                    fraudFlag: fraudFlag,
+                    index: i,
+                    sessionId: row[this.config.columnMapping.sessionId] || i
+                });
+            }
+        }
+
+        if (values.length === 0) {
+            console.error('No valid data points found');
+            return null;
+        }
+
+        // Calculate outlier thresholds using IQR method
+        const sortedValues = [...values].sort((a, b) => a - b);
+        const q1 = this.calculateQuantile(sortedValues, 0.25);
+        const q3 = this.calculateQuantile(sortedValues, 0.75);
+        const iqr = q3 - q1;
+        const lowerBound = q1 - 1.5 * iqr;
+        const upperBound = q3 + 1.5 * iqr;
+
+        // Identify outliers
+        const outliers = dataPoints.filter(d => d.value < lowerBound || d.value > upperBound);
+        const nonOutliers = dataPoints.filter(d => d.value >= lowerBound && d.value <= upperBound);
+
+        console.log(`Outlier analysis: ${outliers.length} outliers out of ${dataPoints.length} total points`);
+        console.log(`Bounds: [${lowerBound.toFixed(2)}, ${upperBound.toFixed(2)}]`);
+
+        return {
+            allData: dataPoints,
+            outliers: outliers,
+            nonOutliers: nonOutliers,
+            bounds: {
+                lower: lowerBound,
+                upper: upperBound,
+                q1: q1,
+                q3: q3,
+                median: this.calculateQuantile(sortedValues, 0.5)
+            },
+            variableName: variableName,
+            datasetName: currentDataset.name
+        };
+    }
+
+    calculateQuantile(sortedArray, p) {
+        const index = p * (sortedArray.length - 1);
+        const lowerIndex = Math.floor(index);
+        const upperIndex = Math.ceil(index);
+        
+        if (lowerIndex === upperIndex) {
+            return sortedArray[lowerIndex];
+        }
+        
+        // Linear interpolation
+        const weight = index - lowerIndex;
+        return sortedArray[lowerIndex] * (1 - weight) + sortedArray[upperIndex] * weight;
+    }
+
+    updateOutlierChart(xScale, chartId) {
+        const chart = this.charts.find(c => c.containerId === `chart-${chartId}`);
+        if (!chart || !chart.outlierData) {
+            console.error('No outlier data available');
+            return;
+        }
+
+        const { variableName } = chart.outlierData;
+        
+        // Set domain based on all data
+        const allValues = chart.outlierData.allData.map(d => d.value);
+        const domain = [d3.min(allValues), d3.max(allValues)];
+        chart.xScale.domain(domain);
+        
+        // Update chart title
+        this.updateOutlierChartTitle(chartId, variableName);
+        
+        // Draw the outlier chart
+        this.chartRenderer.drawChart(chartId, chart);
+    }
+
+    updateOutlierChartTitle(chartId, variableName) {
+        const chartElement = document.getElementById(chartId);
+        if (!chartElement) return;
+
+        const titleElement = chartElement.querySelector('.chart-title');
+        if (titleElement) {
+            titleElement.textContent = `${variableName} - Outlier Detection`;
         }
     }
 }

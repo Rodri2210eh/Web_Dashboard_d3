@@ -259,3 +259,51 @@
 .legend-item line {
     pointer-events: none;
 }
+
+/* Outlier Detection Styles */
+.outlier-point {
+    pointer-events: all;
+    transition: r 0.2s ease, fill 0.2s ease;
+}
+
+.outlier-point:hover {
+    r: 7;
+    fill: #cc0000;
+}
+
+.non-outlier {
+    pointer-events: all;
+    transition: r 0.2s ease;
+}
+
+.non-outlier:hover {
+    r: 5;
+}
+
+.bound-line {
+    pointer-events: none;
+}
+
+.bound-label {
+    pointer-events: none;
+    font-size: 11px;
+    fill: #ff6b6b;
+    font-weight: bold;
+}
+
+.outlier-stats {
+    pointer-events: none;
+    font-size: 14px;
+    fill: #333;
+    font-weight: bold;
+}
+
+.iqr-info {
+    pointer-events: none;
+    font-size: 12px;
+    fill: #666;
+}
+
+.outlier-legend {
+    pointer-events: none;
+}
