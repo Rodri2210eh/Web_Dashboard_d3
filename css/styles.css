@@ -233,7 +233,7 @@ input[type="number"]:focus {
 }
 
 label {
-    font-weight: 600;
+    font-weight: 500;
     color: var(--tu-dark-gray);
     font-size: 14px;
 }
@@ -410,21 +410,6 @@ label {
     gap: 5px;
 }
 
-.bin-count-label {
-    font-size: 14px;
-    font-weight: bold;
-    color: var(--tu-dark-gray);
-    white-space: nowrap;
-}
-
-.chart-bin-count {
-    width: 60px;
-    padding: 6px;
-    border: 1px solid #ddd;
-    border-radius: 4px;
-    font-size: 14px;
-}
-
 .bin-control-container[style*="display: none"],
 .chart-bin-count[style*="display: none"],
 .bin-count-label[style*="display: none"] {
@@ -446,41 +431,10 @@ label {
     display: none !important;
 }
 
-.bin-control-container {
-    display: flex;
-    align-items: center;
-    gap: 5px;
-    padding: 4px;
-    background-color: #f8f9fa;
-    border-radius: 4px;
-    border: 1px solid #e9ecef;
-}
-
-.bin-count-label {
-    font-size: 14px;
-    font-weight: bold;
-    color: var(--tu-dark-gray);
-    white-space: nowrap;
-    margin: 0;
-}
-
 .chart-bin-count {
     width: 60px;
     padding: 4px 6px;
-    border: 1px solid #ced4da;
     border-radius: 3px;
     font-size: 14px;
     text-align: center;
-}
-
-.bin-control-container[style*="display: none"] {
-    display: none !important;
-}
-
-.chart-bin-count[style*="display: none"] {
-    display: none !important;
-}
-
-.bin-count-label[style*="display: none"] {
-    display: none !important;
 }
