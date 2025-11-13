@@ -1,5 +1,3 @@
-// js/main.js - Versión completa sin módulos ES6
-
 // Chart configuration constants
 const CONFIG = {
     width: 800,
@@ -20,13 +18,15 @@ class App {
         this.exportManager = new ExportManager();
         this.mergeManager = new MergeManager();
         
-        // Hacer que chartManager pueda acceder a los datasets
+        
         this.chartManager.app = this;
+        this.resizeObserver = null;
     }
 
     init() {
         this.setupEventListeners();
-        console.log('Application initialized with Go Live server');
+        this.setupResponsiveObserver();
+        console.log('Application initialized with responsive improvements');
     }
 
     setupEventListeners() {
@@ -52,8 +52,38 @@ class App {
         if (joinCharts) {
             joinCharts.addEventListener('click', () => this.showJoinModal());
         }
+    }
+
+    
+    setupResponsiveObserver() {
         
-        window.addEventListener('resize', () => this.handleResize());
+        if (typeof ResizeObserver === 'undefined') {
+            console.warn('ResizeObserver not supported, using window resize');
+            window.addEventListener('resize', () => this.handleResize());
+            return;
+        }
+
+        this.resizeObserver = new ResizeObserver((entries) => {
+            for (let entry of entries) {
+                
+                setTimeout(() => {
+                    this.handleResize();
+                }, 100);
+            }
+        });
+
+        
+        const chartsGrid = document.getElementById('charts-grid');
+        const controls = document.getElementById('controls');
+        
+        if (chartsGrid) {
+            this.resizeObserver.observe(chartsGrid);
+        }
+        if (controls) {
+            this.resizeObserver.observe(controls);
+        }
+
+        console.log('Responsive observer setup complete');
     }
 
     async handleFileUpload(event) {
@@ -115,7 +145,15 @@ class App {
             return;
         }
 
-        this.chartManager.createChart(this.datasets);
+        const chart = this.chartManager.createChart(this.datasets);
+        
+        
+        if (this.resizeObserver && chart) {
+            const chartElement = document.getElementById(chart.containerId.replace('chart-', ''));
+            if (chartElement) {
+                this.resizeObserver.observe(chartElement);
+            }
+        }
     }
 
     showExportModal() {
@@ -127,6 +165,7 @@ class App {
     }
 
     handleResize() {
+        console.log('Handling resize...');
         if (this.chartManager && typeof this.chartManager.handleResize === 'function') {
             this.chartManager.handleResize();
         }
@@ -204,6 +243,13 @@ class App {
     showFileError(message) {
         this.showFileMessage(message, 'error');
     }
+
+    
+    destroy() {
+        if (this.resizeObserver) {
+            this.resizeObserver.disconnect();
+        }
+    }
 }
 
 // Initialize application when DOM is ready
@@ -215,7 +261,7 @@ document.addEventListener('DOMContentLoaded', function() {
         if (typeof App !== 'undefined') {
             window.app = new App();
             window.app.init();
-            console.log('App initialized successfully');
+            console.log('App initialized successfully with responsive features');
         } else {
             console.error('App class not defined. Available classes:');
             console.log('- DataProcessor:', typeof DataProcessor);
@@ -227,3 +273,23 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }, 100);
 });
+
+if (typeof ResizeObserver === 'undefined') {
+    console.warn('ResizeObserver not available, loading polyfill');
+    
+    window.ResizeObserver = class ResizeObserver {
+        constructor(callback) {
+            this.callback = callback;
+        }
+        observe(target) {
+            
+            window.addEventListener('resize', this.callback);
+        }
+        unobserve(target) {
+            window.removeEventListener('resize', this.callback);
+        }
+        disconnect() {
+            window.removeEventListener('resize', this.callback);
+        }
+    };
+}

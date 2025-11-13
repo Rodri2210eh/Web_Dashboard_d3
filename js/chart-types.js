@@ -269,7 +269,7 @@ class ChartRenderer {
 
     setupChartInteractions(chartId, chart) {
         const tooltip = d3.select(`#tooltip-${chartId}`);
-        
+        console.log("setupChartInteractions")
         // Add mouse events for interactive elements
         chart.barsGroup.selectAll('rect, circle, path')
             .on('mouseover', function(event, d) {
@@ -286,6 +286,7 @@ class ChartRenderer {
     }
 
     showTooltip(event, d, chartId, chart) {
+        console.log(event)
         const tooltip = d3.select(`#tooltip-${chartId}`);
         
         const expectedValue = chart.currentRegression ?
@@ -418,7 +419,6 @@ class ChartRenderer {
         this.drawDensityLine(chartId, chart, series2, color2, 'density-line-2', 'none');
 
         // Add KS info and legend
-        this.addKSInfo(chartId, chart, ksStat, pValue);
         this.addCompareLegend(chartId, chart, color1, color2);
 
         // Update axes
@@ -499,16 +499,37 @@ class ChartRenderer {
     }
 
     addKSInfo(chartId, chart, ksStat, pValue) {
-        // Add KS statistic prominently at the top
-        chart.barsGroup.append('text')
-            .attr('class', 'ks-statistic')
-            .attr('x', chart.width / 2)
-            .attr('y', -30)
-            .attr('text-anchor', 'middle')
-            .style('font-size', '14px')
-            .style('font-weight', 'bold')
-            .style('fill', '#333')
-            .text(`KS = ${ksStat.toFixed(4)} ; p_value = ${pValue.toExponential(2)}`);
+        
+        chart.barsGroup.selectAll('.ks-statistic').remove();
+        
+        
+        const yPosition = Math.max(-25, -chart.height * 0.05);
+        
+        
+        const chartHeightThreshold = 400;
+        let ksText;
+        
+        if (chart.height < chartHeightThreshold) {
+            ksText = [
+                `KS = ${ksStat.toFixed(4)}`,
+                `p = ${pValue.toExponential(2)}`
+            ];
+        } else {
+            ksText = [`KS = ${ksStat.toFixed(4)} ; p = ${pValue.toExponential(2)}`];
+        }
+        
+        
+        ksText.forEach((text, index) => {
+            chart.barsGroup.append('text')
+                .attr('class', 'ks-statistic')
+                .attr('x', chart.width / 2)
+                .attr('y', yPosition + (index * 14))
+                .attr('text-anchor', 'middle')
+                .style('font-size', chart.height < 400 ? '10px' : '12px')
+                .style('font-weight', 'bold')
+                .style('fill', '#333')
+                .text(text);
+        });
     }
 
     addCompareLegend(chartId, chart, color1, color2) {

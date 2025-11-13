@@ -306,20 +306,41 @@ class ChartManager {
         return tooltip;
     }
 
+    
     initializeD3Chart(containerId) {
         const container = d3.select(`#chart-${containerId}`);
-        const containerWidth = container.node().getBoundingClientRect().width;
-        const containerHeight = container.node().getBoundingClientRect().height;
+        const containerNode = container.node();
         
-        const chartWidth = containerWidth - this.config.margin.left - this.config.margin.right;
-        const chartHeight = containerHeight - this.config.margin.top - this.config.margin.bottom;
+        if (!containerNode) {
+            console.error('Container node not found for:', `#chart-${containerId}`);
+            return null;
+        }
+        
+        
+        const containerRect = containerNode.getBoundingClientRect();
+        const containerWidth = Math.max(containerRect.width, 300);
+        const containerHeight = Math.max(containerRect.height, 300);
+        
+        console.log(`Initializing chart ${containerId} with dimensions:`, containerWidth, containerHeight);
+        
+        
+        const dynamicMargin = {
+            top: Math.max(30, containerHeight * 0.08),
+            right: Math.max(20, containerWidth * 0.05),
+            bottom: Math.max(40, containerHeight * 0.1),
+            left: Math.max(40, containerWidth * 0.08)
+        };
+
+        const chartWidth = containerWidth - dynamicMargin.left - dynamicMargin.right;
+        const chartHeight = containerHeight - dynamicMargin.top - dynamicMargin.bottom;
 
         const svg = container.append('svg')
             .attr('width', '100%')
             .attr('height', '100%')
             .attr('viewBox', `0 0 ${containerWidth} ${containerHeight}`)
+            .attr('preserveAspectRatio', 'xMidYMid meet')
             .append('g')
-            .attr('transform', `translate(${this.config.margin.left},${this.config.margin.top})`);
+            .attr('transform', `translate(${dynamicMargin.left},${dynamicMargin.top})`);
 
         const clip = svg.append('defs').append('clipPath')
             .attr('id', `clip-${containerId}`)
@@ -368,6 +389,7 @@ class ChartManager {
             isZoomed: false,
             width: chartWidth,
             height: chartHeight,
+            margin: dynamicMargin,
             datasetIndex: 0
         };
     }
@@ -710,8 +732,7 @@ class ChartManager {
                 chart.compareData = compareData;
                 this.updateCompareChart(chart.xScale, chartId);
                 
-                // Update chart title for comparison
-                this.updateCompareChartTitle(chartId, selectedVariable);
+                this.updateCompareChartTitle(chartId, selectedVariable, compareData.ksStat, compareData.pValue);
                 
                 // DISABLE ZOOM FOR COMPARISON CHARTS
                 this.setupChartZoom(chartId, chartType);
@@ -768,13 +789,32 @@ class ChartManager {
         return false;
     }
 
-    updateCompareChartTitle(chartId, variableName) {
+    updateCompareChartTitle(chartId, variableName, ksStat, pValue) {
         const chartElement = document.getElementById(chartId);
         if (!chartElement) return;
 
         const titleElement = chartElement.querySelector('.chart-title');
         if (titleElement) {
-            titleElement.textContent = `${variableName} - Distribution Comparison`;
+            // Formatear valores
+            const ksFormatted = ksStat.toFixed(4);
+            let pValueFormatted;
+            let significance = '';
+            
+            if (pValue < 0.001) {
+                pValueFormatted = pValue.toExponential(2);
+            } else if (pValue < 0.01) {
+                pValueFormatted = pValue.toFixed(5);
+            } else if (pValue < 0.05) {
+                pValueFormatted = pValue.toFixed(4);
+            } else {
+                pValueFormatted = pValue.toFixed(3);
+            }
+            
+            titleElement.textContent = 
+            `${variableName} - Distribution Comparison | KS: ${ksFormatted} | p-value: ${pValueFormatted}`;
+            
+            titleElement.className = 'chart-title';
+        titleElement.classList.add('comparison-chart-title');
         }
     }
 
@@ -785,17 +825,15 @@ class ChartManager {
             return;
         }
 
-        const { series1, series2, variableName } = chart.compareData;
+        const { series1, series2, variableName, ksStat, pValue } = chart.compareData;
         
         // Set domain based on both series
         const allValues = [...series1, ...series2];
         const domain = [d3.min(allValues), d3.max(allValues)];
         chart.xScale.domain(domain);
         
-        // Update chart title to indicate comparison
-        this.updateCompareChartTitle(chartId, variableName);
+        this.updateCompareChartTitle(chartId, variableName, ksStat, pValue);
         
-        // Draw the comparative chart (this will handle axes internally)
         this.chartRenderer.drawChart(chartId, chart);
     }
 
@@ -1182,20 +1220,40 @@ class ChartManager {
             
             if (!containerNode) return;
             
-            const containerWidth = containerNode.clientWidth;
-            const containerHeight = containerNode.clientHeight;
+            const containerRect = containerNode.getBoundingClientRect();
+            const containerWidth = Math.max(containerRect.width, 300);
+            const containerHeight = Math.max(containerRect.height, 300);
+            
+            const dynamicMargin = {
+                top: Math.max(30, containerHeight * 0.08),
+                right: Math.max(20, containerWidth * 0.05),
+                bottom: Math.max(40, containerHeight * 0.1),
+                left: Math.max(40, containerWidth * 0.08)
+            };
 
-            chart.width = containerWidth - this.config.margin.left - this.config.margin.right;
-            chart.height = containerHeight - this.config.margin.top - this.config.margin.bottom;
+            chart.width = containerWidth - dynamicMargin.left - dynamicMargin.right;
+            chart.height = containerHeight - dynamicMargin.top - dynamicMargin.bottom;
+            chart.margin = dynamicMargin;
 
             container.select('svg')
-                .attr('width', containerWidth)
-                .attr('height', containerHeight)
                 .attr('viewBox', `0 0 ${containerWidth} ${containerHeight}`);
 
-            // Update the chart if it has data
-            if (chart.chartData) {
-                this.updateChart(chart.xScale, chartElementId);
+            container.select(`#clip-${chartElementId} rect`)
+                .attr('width', chart.width)
+                .attr('height', chart.height);
+
+            chart.xScale.range([0, chart.width]);
+            chart.yScale.range([chart.height, 0]);
+
+            chart.xAxis.attr('transform', `translate(0,${chart.height})`);
+
+            if (chart.brush) {
+                chart.brush.extent([[0, 0], [chart.width, chart.height]]);
+                chart.brushGroup.call(chart.brush);
+            }
+
+            if (chart.chartData || chart.compareData || chart.outlierData) {
+                this.updateChartFor(chartElementId);
             }
         });
     }
