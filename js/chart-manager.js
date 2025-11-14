@@ -149,11 +149,9 @@ class ChartManager {
         
         const chartHeader = this.createChartHeader(chartId);
         const chartDiv = this.createChartContainer(chartId);
-        const tooltip = this.createTooltip(chartId);
 
         chartWrapper.appendChild(chartHeader);
         chartWrapper.appendChild(chartDiv);
-        chartWrapper.appendChild(tooltip);
 
         return chartWrapper;
     }
@@ -297,15 +295,6 @@ class ChartManager {
         div.id = `chart-${chartId}`;
         return div;
     }
-
-    createTooltip(chartId) {
-        const tooltip = document.createElement('div');
-        tooltip.className = 'tooltip';
-        tooltip.style.opacity = '0';
-        tooltip.id = `tooltip-${chartId}`;
-        return tooltip;
-    }
-
     
     initializeD3Chart(containerId) {
         const container = d3.select(`#chart-${containerId}`);

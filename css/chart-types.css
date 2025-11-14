@@ -42,24 +42,6 @@
     transition: d 0.75s ease, opacity 0.5s ease, stroke-dasharray 0.5s ease;
 }
 
-.tooltip {
-    position: fixed;
-    padding: 12px;
-    background: rgba(0, 84, 164, 0.9);
-    color: white;
-    border-radius: 6px;
-    pointer-events: none;
-    font-size: 13px;
-    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.2);
-    line-height: 1.4;
-    top: 0;
-    left: 0;
-    opacity: 0;
-    z-index: 10;
-    transform: translate(-50%, -200%);
-    transition: opacity 0.3s ease, transform 0.2s ease;
-}
-
 .brush .overlay {
     pointer-events: none;
 }

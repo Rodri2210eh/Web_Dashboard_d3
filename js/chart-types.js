@@ -267,58 +267,6 @@ class ChartRenderer {
             .text(d => d3.format('.2f')(d.fraudRatio));
     }
 
-    setupChartInteractions(chartId, chart) {
-        const tooltip = d3.select(`#tooltip-${chartId}`);
-        console.log("setupChartInteractions")
-        // Add mouse events for interactive elements
-        chart.barsGroup.selectAll('rect, circle, path')
-            .on('mouseover', function(event, d) {
-                d3.select(this).attr('opacity', 0.9);
-                this.showTooltip(event, d, chartId, chart);
-            }.bind(this))
-            .on('mouseout', function() {
-                d3.select(this).attr('opacity', null);
-                this.hideTooltip(chartId);
-            }.bind(this))
-            .on('mousemove', function(event, d) {
-                this.showTooltip(event, d, chartId, chart);
-            }.bind(this));
-    }
-
-    showTooltip(event, d, chartId, chart) {
-        console.log(event)
-        const tooltip = d3.select(`#tooltip-${chartId}`);
-        
-        const expectedValue = chart.currentRegression ?
-            chart.currentRegression.slope * d.xMid + chart.currentRegression.intercept : null;
-
-        const tooltipHtml = `
-            <div><strong>Range:</strong> ${d3.format(',')(d.x0)} - ${d3.format(',')(d.x1)}</div>
-            <div><strong>Fraud Ratio:</strong> ${d3.format('.2f')(d.fraudRatio)}x</div>
-            ${expectedValue ? `
-            <div><strong>Expected Trend:</strong> ${d3.format('.2f')(expectedValue)}x</div>
-            <div><strong>Deviation:</strong> ${d3.format('+.2f')(d.fraudRatio - expectedValue)}x</div>
-            ` : ''}
-            <div><strong>Fraud Rate:</strong> ${d3.format('.1%')(d.fraudRate)}</div>
-            <div><strong>Transactions:</strong> ${d.count.toLocaleString()}</div>
-        `;
-
-        tooltip
-            .html(tooltipHtml)
-            .style('left', `${event.pageX + 10}px`)
-            .style('top', `${event.pageY - 20}px`)
-            .transition()
-            .duration(200)
-            .style('opacity', 0.9);
-    }
-
-    hideTooltip(chartId) {
-        d3.select(`#tooltip-${chartId}`)
-            .transition()
-            .duration(500)
-            .style('opacity', 0);
-    }
-
     getChartColor(chartId) {
         const chartElement = document.getElementById(chartId);
         if (!chartElement) return '#F68D2E';
