@@ -11,6 +11,7 @@ class ChartRenderer {
             'step': this.drawStepChart.bind(this),
             'dot': this.drawDotPlot.bind(this),
             'compare-histogram': this.drawCompareHistogram.bind(this),
+            'cdf': this.drawCDFChart.bind(this),
             'outlier-detection': this.drawOutlierDetection.bind(this)
         };
     }
@@ -757,5 +758,225 @@ class ChartRenderer {
             .attr('text-anchor', 'middle')
             .style('font-size', '12px')
             .text('Feature Value');
+    }
+
+    drawCDFChart(chartId, chart) {
+        if (!chart.compareData) {
+            console.error('No comparison data available for CDF');
+            return;
+        }
+
+        chart.barsGroup.selectAll('*').remove();
+        chart.trendGroup.selectAll('*').remove();
+
+        const { series1, series2, ksStat, pValue, variableName } = chart.compareData;
+        
+        const chartElement = document.getElementById(chartId);
+        let color1 = '#ff6b6b';
+        let color2 = '#4ecdc4';
+        
+        if (chartElement) {
+            const colorPicker1 = chartElement.querySelector('.color-picker-1');
+            const colorPicker2 = chartElement.querySelector('.color-picker-2');
+            color1 = colorPicker1 ? colorPicker1.value : color1;
+            color2 = colorPicker2 ? colorPicker2.value : color2;
+        }
+
+        const cdf1 = this.computeCDF(series1);
+        const cdf2 = this.computeCDF(series2);
+
+        const xScale = chart.xScale;
+        const allValues = [...series1, ...series2];
+        const domain = [d3.min(allValues), d3.max(allValues)];
+        xScale.domain(domain);
+        
+        chart.yScale.domain([0, 1]);
+
+        const line = d3.line()
+            .x(d => xScale(d.x))
+            .y(d => chart.yScale(d.y))
+            .curve(d3.curveMonotoneX);
+
+        chart.barsGroup.append('path')
+            .datum(cdf1)
+            .attr('class', 'cdf-line cdf-line-1')
+            .attr('d', line)
+            .attr('fill', 'none')
+            .attr('stroke', color1)
+            .attr('stroke-width', 3)
+            .attr('stroke-dasharray', '5,5');
+
+        chart.barsGroup.append('path')
+            .datum(cdf2)
+            .attr('class', 'cdf-line cdf-line-2')
+            .attr('d', line)
+            .attr('fill', 'none')
+            .attr('stroke', color2)
+            .attr('stroke-width', 3);
+
+        const maxDiffPoint = this.findMaxDifferencePoint(cdf1, cdf2);
+        
+        if (maxDiffPoint) {
+            chart.barsGroup.append('line')
+                .attr('class', 'ks-max-diff-line')
+                .attr('x1', xScale(maxDiffPoint.x))
+                .attr('x2', xScale(maxDiffPoint.x))
+                .attr('y1', 0)
+                .attr('y2', chart.height)
+                .attr('stroke', '#333')
+                .attr('stroke-width', 1)
+                .attr('stroke-dasharray', '3,3')
+                .attr('opacity', 0.7);
+        }
+
+        this.addCDFLegend(chartId, chart, color1, color2, ksStat, pValue);
+
+        this.updateCDFAxes(chartId, chart);
+    }
+
+    computeCDF(data) {
+        if (!data || data.length === 0) return [];
+        
+        const sorted = [...data].sort((a, b) => a - b);
+        const cdf = [];
+        const n = sorted.length;
+        
+        for (let i = 0; i < n; i++) {
+            cdf.push({
+                x: sorted[i],
+                y: (i + 1) / n
+            });
+        }
+        
+        return cdf;
+    }
+
+    findMaxDifferencePoint(cdf1, cdf2) {
+        let maxDiff = 0;
+        let maxDiffPoint = null;
+        
+        const allX = [...new Set([...cdf1.map(d => d.x), ...cdf2.map(d => d.x)])].sort((a, b) => a - b);
+        
+        allX.forEach(x => {
+            const y1 = this.interpolateCDF(cdf1, x);
+            const y2 = this.interpolateCDF(cdf2, x);
+            const diff = Math.abs(y1 - y2);
+            
+            if (diff > maxDiff) {
+                maxDiff = diff;
+                maxDiffPoint = { x, y1, y2, diff };
+            }
+        });
+        
+        return maxDiffPoint;
+    }
+
+    interpolateCDF(cdf, x) {
+        if (x <= cdf[0].x) return 0;
+        if (x >= cdf[cdf.length - 1].x) return 1;
+        
+        for (let i = 1; i < cdf.length; i++) {
+            if (x <= cdf[i].x) {
+                const x0 = cdf[i-1].x;
+                const x1 = cdf[i].x;
+                const y0 = cdf[i-1].y;
+                const y1 = cdf[i].y;
+                
+                return y0 + (y1 - y0) * (x - x0) / (x1 - x0);
+            }
+        }
+        
+        return 1;
+    }
+
+    updateCDFAxes(chartId, chart) {
+        chart.xAxis
+            .transition()
+            .duration(750)
+            .call(d3.axisBottom(chart.xScale));
+
+        chart.yAxis
+            .transition()
+            .duration(750)
+            .call(d3.axisLeft(chart.yScale).tickFormat(d3.format('.0%')));
+
+        chart.svg.selectAll('.axis-label').remove();
+        
+        chart.svg.append('text')
+            .attr('class', 'axis-label')
+            .attr('x', chart.width / 2)
+            .attr('y', chart.height + 40)
+            .attr('text-anchor', 'middle')
+            .style('font-size', '12px')
+            .text('Feature Value');
+
+        chart.svg.append('text')
+            .attr('class', 'axis-label')
+            .attr('transform', 'rotate(-90)')
+            .attr('y', -40)
+            .attr('x', -chart.height / 2)
+            .attr('text-anchor', 'middle')
+            .style('font-size', '12px')
+            .text('Cumulative Probability');
+    }
+
+    addCDFLegend(chartId, chart, color1, color2, ksStat, pValue) {
+        chart.barsGroup.selectAll('.legend-group').remove();
+
+        const legendGroup = chart.barsGroup.append('g')
+            .attr('class', 'legend-group')
+            .attr('transform', `translate(${chart.width - 200}, 20)`);
+
+        legendGroup.append('text')
+            .attr('class', 'legend-title')
+            .attr('x', 0)
+            .attr('y', 0)
+            .style('font-size', '12px')
+            .style('font-weight', 'bold')
+            .style('fill', '#333')
+            .text('Cumulative Distribution:');
+
+        const legend1 = legendGroup.append('g')
+            .attr('class', 'legend-item')
+            .attr('transform', 'translate(0, 20)');
+
+        legend1.append('line')
+            .attr('class', 'legend-color-1')
+            .attr('x1', 0)
+            .attr('x2', 15)
+            .attr('y1', 0)
+            .attr('y2', 0)
+            .attr('stroke', color1)
+            .attr('stroke-width', 3)
+            .attr('stroke-dasharray', '5,5');
+
+        legend1.append('text')
+            .attr('x', 20)
+            .attr('y', 0)
+            .attr('dy', '0.35em')
+            .style('font-size', '11px')
+            .style('fill', '#333')
+            .text('fraud = 1');
+
+        const legend2 = legendGroup.append('g')
+            .attr('class', 'legend-item')
+            .attr('transform', 'translate(0, 40)');
+
+        legend2.append('line')
+            .attr('class', 'legend-color-2')
+            .attr('x1', 0)
+            .attr('x2', 15)
+            .attr('y1', 0)
+            .attr('y2', 0)
+            .attr('stroke', color2)
+            .attr('stroke-width', 3);
+
+        legend2.append('text')
+            .attr('x', 20)
+            .attr('y', 0)
+            .attr('dy', '0.35em')
+            .style('font-size', '11px')
+            .style('fill', '#333')
+            .text('fraud = 0');
     }
 }

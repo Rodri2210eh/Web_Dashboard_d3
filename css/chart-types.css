@@ -290,3 +290,34 @@
     pointer-events: none;
 }
 
+/* CDF Chart Styles */
+.cdf-line {
+    pointer-events: none;
+}
+
+.cdf-line-1 {
+    stroke-dasharray: 5,5;
+}
+
+.cdf-line-2 {
+    stroke-dasharray: none;
+}
+
+.ks-max-diff-line {
+    pointer-events: none;
+    stroke: #333;
+    stroke-width: 1;
+    stroke-dasharray: 3,3;
+    opacity: 0.7;
+}
+
+.ks-diff-label {
+    pointer-events: none;
+    font-size: 11px;
+    fill: #333;
+    font-weight: bold;
+}
+
+.ks-stat, .p-value {
+    pointer-events: none;
+}

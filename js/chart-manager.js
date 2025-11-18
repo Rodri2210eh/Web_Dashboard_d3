@@ -257,6 +257,7 @@ class ChartManager {
             { value: 'step', text: 'Step Chart' },
             { value: 'dot', text: 'Dot Plot' },
             { value: 'compare-histogram', text: 'Compare Histograms (KS Test)' },
+            { value: 'cdf', text: 'CDF Comparison' },
             { value: 'outlier-detection', text: 'Outlier Detection (IQR)' }
         ];
         
@@ -474,6 +475,52 @@ class ChartManager {
             return;
         }
 
+        if (chartTypeSelect.value === 'cdf') {
+            // TOOLTIP for CDF CHART
+            if (!chart.compareData) {
+                console.log('No comparison data available for CDF tooltip');
+                return;
+            }
+
+            const [x, y] = d3.pointer(event, chart.svg.node());
+            const xValue = chart.xScale.invert(x);
+            
+            const tooltip = d3.select(`#tooltip-${chartId}`);
+            
+            if (tooltip.empty()) {
+                console.log('Tooltip element not found');
+                return;
+            }
+
+            tooltip
+                .style('left', `${event.pageX + 10}px`)
+                .style('top', `${event.pageY - 20}px`)
+                .transition().duration(200).style('opacity', 0.9);
+
+            const { series1, series2, ksStat } = chart.compareData;
+            
+            const cdf1 = this.calculateCDFValue(series1, xValue);
+            const cdf2 = this.calculateCDFValue(series2, xValue);
+            const diff = Math.abs(cdf1 - cdf2);
+
+            const colorPicker1 = chartElement.querySelector('.color-picker-1');
+            const colorPicker2 = chartElement.querySelector('.color-picker-2');
+            const color1 = colorPicker1 ? colorPicker1.value : '#ff6b6b';
+            const color2 = colorPicker2 ? colorPicker2.value : '#4ecdc4';
+
+            tooltip.html(`
+                <div><strong>X Value:</strong> ${d3.format('.4f')(xValue)}</div>
+                <hr style="margin: 5px 0;">
+                <div style="color: ${color1};"><strong>Fraud = 1 CDF:</strong> ${d3.format('.1%')(cdf1)}</div>
+                <div style="color: ${color2};"><strong>Fraud = 0 CDF:</strong> ${d3.format('.1%')(cdf2)}</div>
+                <div><strong>Difference:</strong> ${d3.format('.1%')(diff)}</div>
+                <hr style="margin: 5px 0;">
+                <div><strong>KS Statistic:</strong> ${d3.format('.4f')(ksStat)}</div>
+                <div><strong>At this point:</strong> ${diff === ksStat ? 'MAX (KS)' : ''}</div>
+            `);
+            return;
+        }
+
         if (!chart.currentBins || chart.currentBins.length === 0) {
             console.log('No currentBins available for tooltip');
             this.hideTooltip(chartId);
@@ -653,7 +700,7 @@ class ChartManager {
         // Bin control visibility is now handled separately in updateBinControlVisibility
         
         // Add color pickers based on chart type
-        if (chartType === 'compare-histogram') {
+        if (chartType === 'compare-histogram' || chartType === 'cdf') {
             const colorPickerContainer = this.createComparativeColorPicker(chartId);
             // Insert before remove button
             const removeButton = chartControls.querySelector('.remove-chart');
@@ -742,8 +789,31 @@ class ChartManager {
         container.appendChild(colorsContainer);
         
         // Add event listeners
-        color1Input.addEventListener('input', () => this.updateComparativeChartColor(chartId));
-        color2Input.addEventListener('input', () => this.updateComparativeChartColor(chartId));
+        color1Input.addEventListener('input', () => {
+            // Check chart type and call appropriate update function
+            const chartElement = document.getElementById(chartId);
+            const chartTypeSelect = chartElement.querySelector('.chart-type-select');
+            const chartType = chartTypeSelect ? chartTypeSelect.value : '';
+            
+            if (chartType === 'compare-histogram') {
+                this.updateComparativeChartColor(chartId);
+            } else if (chartType === 'cdf') {
+                this.updateCDFChartColor(chartId);
+            }
+        });
+        
+        color2Input.addEventListener('input', () => {
+            // Check chart type and call appropriate update function
+            const chartElement = document.getElementById(chartId);
+            const chartTypeSelect = chartElement.querySelector('.chart-type-select');
+            const chartType = chartTypeSelect ? chartTypeSelect.value : '';
+            
+            if (chartType === 'compare-histogram') {
+                this.updateComparativeChartColor(chartId);
+            } else if (chartType === 'cdf') {
+                this.updateCDFChartColor(chartId);
+            }
+        });
         
         return container;
     }
@@ -891,8 +961,7 @@ class ChartManager {
             return;
         }
 
-        if (chartType === 'compare-histogram') {
-            // For comparison charts, IGNORE bin count - use fixed density estimation
+        if (chartType === 'compare-histogram' || chartType === 'cdf') {
             console.log('Comparison chart - ignoring bin count');
             
             if (!this.validateFraudFlagColumn(chart.datasetIndex)) {
@@ -903,18 +972,21 @@ class ChartManager {
             const compareData = this.prepareCompareData(chartId, selectedVariable);
             if (compareData) {
                 chart.compareData = compareData;
-                this.updateCompareChart(chart.xScale, chartId);
                 
-                this.updateCompareChartTitle(chartId, selectedVariable, compareData.ksStat, compareData.pValue);
+                if (chartType === 'cdf') {
+                    this.updateCDFChart(chart.xScale, chartId);
+                    this.updateCDFChartTitle(chartId, selectedVariable, compareData.ksStat, compareData.pValue);
+                } else {
+                    this.updateCompareChart(chart.xScale, chartId);
+                    this.updateCompareChartTitle(chartId, selectedVariable, compareData.ksStat, compareData.pValue);
+                }
                 
                 // DISABLE ZOOM FOR COMPARISON CHARTS
                 this.setupChartZoom(chartId, chartType);
-
                 this.setupChartTooltip(chartId, chartType);
                 return;
             } else {
                 console.log('Comparison data preparation failed, falling back to regular histogram');
-                // If comparison fails, proceed with normal analysis using bins
             }
         } else {
             // Clear comparison data if switching from comparison to regular chart
@@ -1452,7 +1524,7 @@ class ChartManager {
         const binInput = chartElement.querySelector('.chart-bin-count');
         const binLabel = chartElement.querySelector('.bin-count-label');
         
-        const shouldShow = chartType !== 'compare-histogram';
+        const shouldShow = chartType !== 'compare-histogram' && chartType !== 'cdf';
         const displayValue = shouldShow ? 'flex' : 'none';
         
         console.log(`Updating bin controls: show=${shouldShow} for chartType=${chartType}`);
@@ -1592,6 +1664,88 @@ class ChartManager {
         const titleElement = chartElement.querySelector('.chart-title');
         if (titleElement) {
             titleElement.textContent = `${variableName} - Outlier Detection`;
+        }
+    }
+
+    updateCDFChart(xScale, chartId) {
+        const chart = this.charts.find(c => c.containerId === `chart-${chartId}`);
+        if (!chart || !chart.compareData) {
+            console.error('No comparison data available for CDF');
+            return;
+        }
+
+        const { series1, series2, variableName, ksStat, pValue } = chart.compareData;
+        
+        // Set domain based on both series
+        const allValues = [...series1, ...series2];
+        const domain = [d3.min(allValues), d3.max(allValues)];
+        chart.xScale.domain(domain);
+        
+        this.updateCDFChartTitle(chartId, variableName, ksStat, pValue);
+        
+        this.chartRenderer.drawChart(chartId, chart);
+    }
+
+    updateCDFChartTitle(chartId, variableName, ksStat, pValue) {
+        const chartElement = document.getElementById(chartId);
+        if (!chartElement) return;
+
+        const titleElement = chartElement.querySelector('.chart-title');
+        if (titleElement) {
+            const ksFormatted = ksStat.toFixed(4);
+            let pValueFormatted;
+            
+            if (pValue < 0.001) {
+                pValueFormatted = pValue.toExponential(2);
+            } else if (pValue < 0.01) {
+                pValueFormatted = pValue.toFixed(5);
+            } else if (pValue < 0.05) {
+                pValueFormatted = pValue.toFixed(4);
+            } else {
+                pValueFormatted = pValue.toFixed(3);
+            }
+            
+            titleElement.textContent = 
+                `${variableName} - CDF Comparison | KS: ${ksFormatted} | p-value: ${pValueFormatted}`;
+            
+            titleElement.className = 'chart-title';
+            titleElement.classList.add('comparison-chart-title');
+        }
+    }
+
+    calculateCDFValue(data, x) {
+        if (!data || data.length === 0) return 0;
+        const count = data.filter(d => d <= x).length;
+        return count / data.length;
+    }
+
+    updateCDFChartColor(chartId) {
+        const chart = this.charts.find(c => c.containerId === `chart-${chartId}`);
+        if (chart && chart.compareData) {
+            const chartElement = document.getElementById(chartId);
+            const colorPicker1 = chartElement.querySelector('.color-picker-1');
+            const colorPicker2 = chartElement.querySelector('.color-picker-2');
+            
+            const color1 = colorPicker1 ? colorPicker1.value : '#ff6b6b';
+            const color2 = colorPicker2 ? colorPicker2.value : '#4ecdc4';
+            
+            // Update CDF lines
+            chart.barsGroup.selectAll('.cdf-line-1')
+                .attr('stroke', color1);
+                
+            chart.barsGroup.selectAll('.cdf-line-2')
+                .attr('stroke', color2);
+                
+            // Update legend colors
+            chart.barsGroup.selectAll('.legend-color-1')
+                .attr('stroke', color1);
+                
+            chart.barsGroup.selectAll('.legend-color-2')
+                .attr('stroke', color2);
+                
+            // Update KS line if it exists
+            chart.barsGroup.selectAll('.ks-max-diff-line')
+                .attr('stroke', '#333');
         }
     }
 }
