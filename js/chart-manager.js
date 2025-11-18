@@ -418,20 +418,65 @@ class ChartManager {
             return;
         }
 
-        if (!chart.currentBins || chart.currentBins.length === 0) {
-            console.log('No currentBins available for tooltip');
-            this.hideTooltip(chartId);
-            return;
-        }
-
         // Check if this is a comparison chart
         const chartElement = document.getElementById(chartId);
         const chartTypeSelect = chartElement ? chartElement.querySelector('.chart-type-select') : null;
         const isComparisonChart = chartTypeSelect && chartTypeSelect.value === 'compare-histogram';
 
-        // Disable tooltip for comparison charts
         if (isComparisonChart) {
-            chart.brushGroup.call(chart.brush.move, null); // Clear brush selection
+            if (!chart.compareData) {
+                console.log('No comparison data available for tooltip');
+                return;
+            }
+
+            const [x, y] = d3.pointer(event, chart.svg.node());
+            const xValue = chart.xScale.invert(x);
+            
+            const tooltip = d3.select(`#tooltip-${chartId}`);
+            
+            if (tooltip.empty()) {
+                console.log('Tooltip element not found');
+                return;
+            }
+
+            tooltip
+                .style('left', `${event.pageX + 10}px`)
+                .style('top', `${event.pageY - 20}px`)
+                .transition().duration(200).style('opacity', 0.9);
+
+            const { series1, series2, ksStat, pValue, variableName } = chart.compareData;
+            
+            const closest1 = this.findClosestValue(series1, xValue);
+            const closest2 = this.findClosestValue(series2, xValue);
+            
+            const percentile1 = this.calculatePercentile(series1, xValue);
+            const percentile2 = this.calculatePercentile(series2, xValue);
+
+            tooltip.html(`
+                <div><strong>Variable:</strong> ${variableName}</div>
+                <div><strong>X Value:</strong> ${d3.format('.4f')(xValue)}</div>
+                <hr style="margin: 5px 0;">
+                <div style="color: #ff6b6b;"><strong>Fraud = 1 (Positive):</strong></div>
+                <div>&nbsp;&nbsp;Closest value: ${d3.format('.4f')(closest1)}</div>
+                <div>&nbsp;&nbsp;Percentile: ${d3.format('.1%')(percentile1)}</div>
+                <div>&nbsp;&nbsp;Sample size: ${series1.length.toLocaleString()}</div>
+                <hr style="margin: 5px 0;">
+                <div style="color: #4ecdc4;"><strong>Fraud = 0 (Negative):</strong></div>
+                <div>&nbsp;&nbsp;Closest value: ${d3.format('.4f')(closest2)}</div>
+                <div>&nbsp;&nbsp;Percentile: ${d3.format('.1%')(percentile2)}</div>
+                <div>&nbsp;&nbsp;Sample size: ${series2.length.toLocaleString()}</div>
+                <hr style="margin: 5px 0;">
+                <div><strong>KS Test Results:</strong></div>
+                <div>&nbsp;&nbsp;Statistic: ${d3.format('.4f')(ksStat)}</div>
+                <div>&nbsp;&nbsp;p-value: ${pValue < 0.001 ? pValue.toExponential(2) : d3.format('.4f')(pValue)}</div>
+                <div>&nbsp;&nbsp;Significance: ${pValue < 0.05 ? 'Significant' : 'Not Significant'}</div>
+            `);
+            return;
+        }
+
+        if (!chart.currentBins || chart.currentBins.length === 0) {
+            console.log('No currentBins available for tooltip');
+            this.hideTooltip(chartId);
             return;
         }
 
@@ -484,6 +529,22 @@ class ChartManager {
         .style('top', `${event.pageY}px`);
     }
 
+    findClosestValue(array, target) {
+        if (!array || array.length === 0) return null;
+        
+        return array.reduce((prev, curr) => {
+            return (Math.abs(curr - target) < Math.abs(prev - target) ? curr : prev);
+        });
+    }
+
+    calculatePercentile(array, value) {
+        if (!array || array.length === 0) return 0;
+        
+        const sorted = [...array].sort((a, b) => a - b);
+        const count = sorted.filter(v => v <= value).length;
+        return count / sorted.length;
+    }
+
     setupChartZoom(chartId, chartType) {
         const chart = this.charts.find(c => c.containerId === `chart-${chartId}`);
         console.log("setupChartZoom")
@@ -516,9 +577,10 @@ class ChartManager {
         console.log("setupChartTooltip")
         if (!chart) return;
 
-        const isComparisonChart = chartType === 'compare-histogram' || chartType === 'outlier-detection';
+        const isComparisonChart = chartType === 'compare-histogram';
+        const isOutlierDetection = chartType === 'outlier-detection';
 
-        if (!isComparisonChart) {
+        if (isComparisonChart || !isOutlierDetection) {
             chart.svg.on("mousemove", (event) => {
                 if (!event.buttons) {
                     this.showTooltip(event, chartId);
