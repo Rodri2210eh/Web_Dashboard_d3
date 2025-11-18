@@ -455,7 +455,6 @@ class ChartManager {
 
             tooltip.html(`
                 <div><strong>Variable:</strong> ${variableName}</div>
-                <div><strong>X Value:</strong> ${d3.format('.4f')(xValue)}</div>
                 <hr style="margin: 5px 0;">
                 <div style="color: #ff6b6b;"><strong>Fraud = 1 (Positive):</strong></div>
                 <div>&nbsp;&nbsp;Closest value: ${d3.format('.4f')(closest1)}</div>
@@ -467,10 +466,6 @@ class ChartManager {
                 <div>&nbsp;&nbsp;Percentile: ${d3.format('.1%')(percentile2)}</div>
                 <div>&nbsp;&nbsp;Sample size: ${series2.length.toLocaleString()}</div>
                 <hr style="margin: 5px 0;">
-                <div><strong>KS Test Results:</strong></div>
-                <div>&nbsp;&nbsp;Statistic: ${d3.format('.4f')(ksStat)}</div>
-                <div>&nbsp;&nbsp;p-value: ${pValue < 0.001 ? pValue.toExponential(2) : d3.format('.4f')(pValue)}</div>
-                <div>&nbsp;&nbsp;Significance: ${pValue < 0.05 ? 'Significant' : 'Not Significant'}</div>
             `);
             return;
         }
@@ -515,8 +510,6 @@ class ChartManager {
                 <div style="color: ${color2};"><strong>Fraud = 0 CDF:</strong> ${d3.format('.1%')(cdf2)}</div>
                 <div><strong>Difference:</strong> ${d3.format('.1%')(diff)}</div>
                 <hr style="margin: 5px 0;">
-                <div><strong>KS Statistic:</strong> ${d3.format('.4f')(ksStat)}</div>
-                <div><strong>At this point:</strong> ${diff === ksStat ? 'MAX (KS)' : ''}</div>
             `);
             return;
         }
