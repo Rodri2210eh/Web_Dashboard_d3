@@ -619,3 +619,25 @@ label {
         margin-bottom: 12px;
     }
 }
+
+.tooltip {
+    position: absolute;
+    background: rgba(255, 255, 255, 0.95);
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    padding: 8px;
+    pointer-events: none;
+    z-index: 1000;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    font-size: 12px;
+    line-height: 1.4;
+    max-width: 300px;
+}
+
+.tooltip div {
+    margin-bottom: 2px;
+}
+
+.tooltip strong {
+    color: var(--tu-blue);
+}

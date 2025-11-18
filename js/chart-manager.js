@@ -153,6 +153,22 @@ class ChartManager {
         chartWrapper.appendChild(chartHeader);
         chartWrapper.appendChild(chartDiv);
 
+        // Crear el elemento tooltip si no existe
+        const tooltip = document.createElement('div');
+        tooltip.className = 'tooltip';
+        tooltip.id = `tooltip-${chartId}`;
+        tooltip.style.opacity = '0';
+        tooltip.style.position = 'absolute';
+        tooltip.style.background = 'rgba(255, 255, 255, 0.95)';
+        tooltip.style.border = '1px solid #ddd';
+        tooltip.style.borderRadius = '4px';
+        tooltip.style.padding = '8px';
+        tooltip.style.pointerEvents = 'none';
+        tooltip.style.zIndex = '1000';
+        tooltip.style.boxShadow = '0 2px 4px rgba(0,0,0,0.1)';
+        
+        chartWrapper.appendChild(tooltip);
+
         return chartWrapper;
     }
 
@@ -305,13 +321,11 @@ class ChartManager {
             return null;
         }
         
-        
         const containerRect = containerNode.getBoundingClientRect();
         const containerWidth = Math.max(containerRect.width, 300);
         const containerHeight = Math.max(containerRect.height, 300);
         
         console.log(`Initializing chart ${containerId} with dimensions:`, containerWidth, containerHeight);
-        
         
         const dynamicMargin = {
             top: Math.max(30, containerHeight * 0.08),
@@ -358,6 +372,14 @@ class ChartManager {
 
         // Double-click event will be conditionally handled
         svg.on('dblclick', () => {}); // Empty handler for now
+        
+        // Usar arrow functions para mantener el contexto de 'this'
+        svg.on("mousemove", (event) => {
+                if (!event.buttons) {
+                    this.showTooltip(event, containerId);
+                }
+            })
+            .on("mouseout", () => this.hideTooltip(containerId));
 
         return {
             containerId: `chart-${containerId}`,
@@ -383,8 +405,88 @@ class ChartManager {
         };
     }
 
+    hideTooltip(chartId) {
+        d3.select(`#tooltip-${chartId}`).transition().duration(500).style('opacity', 0);
+    }
+
+    showTooltip(event, chartId) {
+        console.log("showTooltip", chartId);
+
+        const chart = this.charts.find(c => c.containerId === `chart-${chartId}`);
+        if (!chart) {
+            console.log('Chart not found for tooltip');
+            return;
+        }
+
+        if (!chart.currentBins || chart.currentBins.length === 0) {
+            console.log('No currentBins available for tooltip');
+            this.hideTooltip(chartId);
+            return;
+        }
+
+        // Check if this is a comparison chart
+        const chartElement = document.getElementById(chartId);
+        const chartTypeSelect = chartElement ? chartElement.querySelector('.chart-type-select') : null;
+        const isComparisonChart = chartTypeSelect && chartTypeSelect.value === 'compare-histogram';
+
+        // Disable tooltip for comparison charts
+        if (isComparisonChart) {
+            chart.brushGroup.call(chart.brush.move, null); // Clear brush selection
+            return;
+        }
+
+        const [x, y] = d3.pointer(event, chart.svg.node());
+        
+        const d = chart.currentBins.find(b => {
+            if (!b || b.x0 === undefined || b.x1 === undefined) return false;
+            
+            const x0 = chart.xScale(b.x0);
+            const x1 = chart.xScale(b.x1);
+            
+            const margin = 2;
+            return x >= (x0 - margin) && x <= (x1 + margin);
+        });
+
+        if (!d) {
+            this.hideTooltip(chartId);
+            return;
+        }
+
+        const tooltip = d3.select(`#tooltip-${chartId}`);
+        
+        if (tooltip.empty()) {
+            console.log('Tooltip element not found');
+            return;
+        }
+
+        tooltip
+            .style('left', `${event.pageX + 10}px`)
+            .style('top', `${event.pageY - 20}px`);
+        
+        console.log("Tooltip element found:", tooltip.node());
+        
+        tooltip.transition().duration(200).style('opacity', 0.9);
+
+        const expectedValue = chart.currentRegression ?
+            chart.currentRegression.slope * d.xMid + chart.currentRegression.intercept : null;
+
+        tooltip.html(`
+            <div><strong>Range:</strong> ${d3.format(',')(d.x0)} - ${d3.format(',')(d.x1)}</div>
+            <div><strong>Fraud Ratio:</strong> ${d3.format('.2f')(d.fraudRatio)}x</div>
+            ${expectedValue ? `
+            <div><strong>Expected Trend:</strong> ${d3.format('.2f')(expectedValue)}x</div>
+            <div><strong>Deviation:</strong> ${d3.format('+.2f')(d.fraudRatio - expectedValue)}x</div>
+            ` : ''}
+            <div><strong>Fraud Rate:</strong> ${d3.format('.1%')(d.fraudRate)}</div>
+            <div><strong>Transactions:</strong> ${d.count.toLocaleString()}</div>
+        `)
+        .style('left', `${event.pageX}px`)
+        .style('top', `${event.pageY}px`);
+    }
+
     setupChartZoom(chartId, chartType) {
         const chart = this.charts.find(c => c.containerId === `chart-${chartId}`);
+        console.log("setupChartZoom")
         if (!chart) return;
 
         const isComparisonChart = chartType === 'compare-histogram' || chartType === 'outlier-detection';
@@ -406,6 +508,26 @@ class ChartManager {
             // Disable zoom for comparison charts
             chart.brush = null;
             chart.svg.on('dblclick', null);
+        }
+    }
+
+    setupChartTooltip(chartId, chartType) {
+        const chart = this.charts.find(c => c.containerId === `chart-${chartId}`);
+        console.log("setupChartTooltip")
+        if (!chart) return;
+
+        const isComparisonChart = chartType === 'compare-histogram' || chartType === 'outlier-detection';
+
+        if (!isComparisonChart) {
+            chart.svg.on("mousemove", (event) => {
+                if (!event.buttons) {
+                    this.showTooltip(event, chartId);
+                }
+            })
+            .on("mouseout", () => this.hideTooltip(chartId));
+        } else {
+            chart.svg.on('mousemove', null);
+            chart.svg.on('mouseout', null);
         }
     }
 
@@ -725,6 +847,8 @@ class ChartManager {
                 
                 // DISABLE ZOOM FOR COMPARISON CHARTS
                 this.setupChartZoom(chartId, chartType);
+
+                this.setupChartTooltip(chartId, chartType);
                 return;
             } else {
                 console.log('Comparison data preparation failed, falling back to regular histogram');
@@ -738,6 +862,8 @@ class ChartManager {
             
             // ENABLE ZOOM FOR REGULAR CHARTS
             this.setupChartZoom(chartId, chartType);
+
+            this.setupChartTooltip(chartId, chartType);
         }
 
         if (chartType === 'outlier-detection') {
@@ -753,6 +879,8 @@ class ChartManager {
                 
                 // Disable zoom for outlier detection
                 this.setupChartZoom(chartId, chartType);
+
+                this.setupChartTooltip(chartId, chartType);
                 return;
             } else {
                 console.log('Outlier data preparation failed');

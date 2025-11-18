@@ -44,8 +44,6 @@ class ChartRenderer {
         } else {
             this.drawHistogram(chartId, chart); // Default fallback
         }
-        
-        this.setupChartInteractions(chartId, chart);
     }
 
     drawHistogram(chartId, chart) {
